@@ -121,7 +121,8 @@ export class ApiClient {
                 redirect:window.location.toString(), 
                 redirectStatus:299
             });
-            const response = await fetch(connectUrl, { method: 'POST', headers:this.headers, mode: 'no-cors', cache: 'no-cache', body:connectBody });
+            // @ts-ignore
+            const response = await fetch(connectUrl, { method: 'POST', headers:{ ...this.headers }, cache: 'no-cache', body:connectBody });
 
             if (response.status !== 200) {
                 this.status = NOT_CONNECTED;
