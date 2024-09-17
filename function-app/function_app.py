@@ -901,8 +901,15 @@ def serve_ui(req: func.HttpRequest) -> func.HttpResponse:
         last_dot = path.rfind(".")
         if last_dot > -1: 
             ext = path[last_dot+1:]
-            if ext in ["html", "htm", "js", "css", 'svg', 'png', 'jpeg', 'jpg']:
+            if ext in ["html", "htm", "js", "cjs", "map", "css", 'svg', 'png', 'jpeg', 'jpg']:
                 valid = True
+
+    if not valid: 
+        ## Check if it's an allowed known url
+        check_path = path
+        if check_path.startswith("/"): check_path = check_path[1:]
+        if check_path in ["favicon.ico", "robots.txt", "sitemap.xml", "manifest.json"]:
+            valid = True
 
     if not valid:
         return login_redir

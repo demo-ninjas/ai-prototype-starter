@@ -37,7 +37,7 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
 
         return (options:any) => {
           let headers = options.headers || {};
-          
+
           // Add extra headers to the request
           headers = { ...headers, ...apiClient.headers, ...extraHeaders };
           
@@ -275,9 +275,10 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
                 addEventListener: (e:any) => {},
                 removeEventListener: (e:any) => {}
               },
-              SpeechSynthesisUtterance: (speech:string) => {
-                speak(speech, 'en-AU');
-              }
+              SpeechSynthesisUtterance: speechServicesPonyfill.SpeechSynthesisUtterance
+              // (speech:string) => {
+              //   speak(speech, 'en-AU');
+              // }
             };
 
             // @ts-ignore
