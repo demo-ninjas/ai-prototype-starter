@@ -1,0 +1,45 @@
+
+#app-header .new-chat-btn {
+    background-color: #2876be;
+    color: white;
+    border: none;
+    border-radius: 0.3rem;
+    padding: 0.3rem;
+    margin: 0.5rem;
+    font-size: 0.6rem;
+    cursor: pointer;
+    position: absolute;
+    right: 0.5rem;
+    top: 0.5rem;
+}
+
+#app-header .new-chat-btn:hover {
+    background-color: #1f5f9b;
+}
+
+#speaker-toggle {
+    border: none;
+    border-radius: 0.3rem;
+    padding: 0.3rem;
+    margin: 0.5rem;
+    font-size: 0.6rem;
+    cursor: pointer;
+    position: absolute;
+    right: 5rem;
+    top: 0.5rem;
+}
+
+#speaker-toggle:hover {
+    border: solid 1px white;
+}
+
+.speaker-on {
+    background-color: #005e0054;
+    color: white;
+}
+
+.speaker-off {
+    background-color: #4c0000;
+    color: white;
+}
+

@@ -1,0 +1,25 @@
+
+
+#app-aside-left ul {
+    list-style-type: none;
+    padding-left: 0.5rem;
+    margin: 0;
+    text-align: left;
+    font-size: 0.7rem;
+}
+
+#app-aside-left li {
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    border-top: whitesmoke 1px solid;
+}
+#app-aside-left li:hover {
+    background-color: #2876be;
+    cursor: pointer;
+}
+
+.orchestrator-selected {
+    background-color: #2876be;
+    border-left: whitesmoke 1px solid;
+    border-right: whitesmoke 1px solid;
+}

@@ -1,0 +1,40 @@
+.steps-div {
+    max-height: 60vh;
+    overflow-y: auto;
+    clear: both;
+}
+
+.steps-list {
+    padding-inline-start: 1.2rem;
+    margin-block-start: 0rem;
+    margin-block-end: 0rem;
+    padding-block: 0rem;
+    list-style-type: decimal;
+}
+
+
+.App-aside-right h5 {
+    font-size: 0.9rem;
+    text-align: left;
+    margin-block-start: 0.5rem;
+    margin-block-end: 0.1rem;
+    border-top-style: groove;
+}
+
+.progress-div {
+    position: absolute;
+    bottom: calc(28px + 1rem);
+    right: 5px;
+    font-size: 0.7rem;
+    color: white;
+    justify-content: left;
+    border-top-style: groove;
+    width:240px;
+    text-wrap: pretty;
+    clear: both;
+}
+
+.progress-div h5 {
+    text-align: left;
+    font-size: 0.8rem;
+}

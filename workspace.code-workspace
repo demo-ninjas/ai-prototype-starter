@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"path": "chat-playground", 
+			"name": "⛏ Chat Playground"
+		},
+		{
+			"path": "function-app", 
+			"name": "🗲 The Brain"
+		},
+		{
+			"path": ".",
+			"name": "🔧 Workspace"
+		}
+		
+	],
+	"settings": {}
+}

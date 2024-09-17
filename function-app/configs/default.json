@@ -1,0 +1,19 @@
+{
+  "id": "default",
+  "type": "step-plan",
+  "public": false,
+  "description": "Use a step planner to fulfill the user's prompt.",
+  "pattern": "Step Planner",
+  "responder-preamble": "!responder-preamble.txt",
+  "planner-preamble": "!planner-preamble.txt",
+  "exclude-functions": [
+    "search",
+    "get_document",
+    "lookup_document_by_field",
+    "get_item",
+    "get_item_list",
+    "get_partition_items",
+    "upsert_item",
+    "delete_item"
+  ]
+}
