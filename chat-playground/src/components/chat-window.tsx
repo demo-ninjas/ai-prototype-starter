@@ -37,22 +37,10 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
 
         return (options:any) => {
           let headers = options.headers || {};
-          // headers['orchestrator'] = 'default';
-
-          // if (subscriptionKey) {
-          //   headers['subscription'] = subscriptionKey;
-          // }
-
+          
           // Add extra headers to the request
-          if (extraHeaders) {
-            headers = { ...headers, ...extraHeaders };
-          }
-
-          // Copy the headers from the apiClient
-          apiClient.headers.forEach((value:string, key:string) => {
-            headers[key] = value;
-          });
-
+          headers = { ...headers, ...apiClient.headers, ...extraHeaders };
+          
           return ajax({ ...options, headers });
         };
     };

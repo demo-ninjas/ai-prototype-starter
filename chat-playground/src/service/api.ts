@@ -19,17 +19,19 @@ export class ApiClient {
     speechRegion:string = '';
     
     store:any = null;
-    headers:Headers = new Headers({ 'Accept': 'application/json' });
+    headers:{ [key:string]:string } = {};
     queryParams:URLSearchParams = new URLSearchParams(window.location.search);
 
     constructor() {
+        this.headers['Accept'] = 'application/json';
+
         // Add Subscription Key if it exists
         let subscriptionKey = this.queryParams.get('subscription');
         if (!subscriptionKey) {
             subscriptionKey = localStorage.getItem('subscription');
         }
         if (subscriptionKey) {
-            this.headers.set("subscription", subscriptionKey);
+            this.headers["subscription"] = subscriptionKey;
             localStorage.setItem('subscription', subscriptionKey);
         }
         
@@ -50,7 +52,7 @@ export class ApiClient {
             }
 
             if (this.selected_orchestrator && this.selected_orchestrator.length > 0) {
-                this.headers.set('orchestrator', this.selected_orchestrator);
+                this.headers['orchestrator'] = this.selected_orchestrator;
             }
         });
     }
@@ -60,7 +62,7 @@ export class ApiClient {
     }
 
     get subscriptionKey() : string {
-        return this.headers.get('subscription') || '';
+        return this.headers['subscription'] || '';
     }
     get directLineUrl() : string {
         return `${API_URL}/webchat`;
