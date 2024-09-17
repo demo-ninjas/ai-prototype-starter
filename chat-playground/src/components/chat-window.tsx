@@ -398,7 +398,9 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
       }
 
       utterance.voice = voice;
-      console.log("Utterance:", utterance);
+      if (apiClient.isDebug) {
+        console.log("Utterance:", utterance);
+      }
       // @ts-ignore
       window.__ss.speak(utterance);
     }
