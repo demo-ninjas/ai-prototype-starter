@@ -1,0 +1,10 @@
+
+#app-footer .user-div {
+    display: absolute;
+    position: absolute;
+    bottom: 1.2rem;
+    right: 0.5rem;
+    font-size: 0.6rem;
+    color: #fff;
+    font-style: italic;
+}

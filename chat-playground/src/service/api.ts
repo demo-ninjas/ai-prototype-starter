@@ -1,4 +1,4 @@
-import { ORCHESTRATOR_LIST, ORCHESTRATOR_SELECTED } from '../data/events';
+import { ORCHESTRATOR_LIST, ORCHESTRATOR_SELECTED, USER_STATE_CHANGED } from '../data/events';
 
 const API_URL = '/api';
 
@@ -196,6 +196,10 @@ export class ApiClient {
             if (this.selected_orchestrator && this.selected_orchestrator.length > 0) {
                 document.dispatchEvent(new CustomEvent(ORCHESTRATOR_SELECTED, { detail: this.selected_orchestrator }));
             }
+
+
+            // Notify that the username + name has been set
+            document.dispatchEvent(new CustomEvent(USER_STATE_CHANGED, { detail: { username, name } }));
 
             return this.thread;
         } catch (error) {
