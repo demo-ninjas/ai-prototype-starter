@@ -1,12 +1,12 @@
 import ReactWebChat from 'botframework-webchat';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ApiClient } from '../service/api';
 import { WebPubSubToWebChatWrapper } from '../utils/wrappedWebsocket'
 import { MessageDelta, DELTA_STATUS_CAPTURING, DELTA_STATUS_EXPIRED } from '../data/delta-message';
 import chatStyleOptions from './chat-style-options';
 import './chat-window.css';
 
-import { CLEAR_STEPS, CLEAR_PROGRESS, STEP_MESSAGE, PROGRESS_MESSAGE, ORCHESTRATOR_SELECTED } from '../data/events';
+import { CLEAR_STEPS, CLEAR_PROGRESS, STEP_MESSAGE, PROGRESS_MESSAGE,  METADATA_LEVEL_CHANGED } from '../data/events';
 
 const messageDelta = new MessageDelta();
 
@@ -16,24 +16,12 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
     const [threadId, setThreadId] = useState('');
     const [directLine, setDirectLine] = useState(null);
     const [apiFailing, setApiFailing] = useState(0);
+    const renderMetadataLevel = useRef(parseInt(localStorage.getItem('metadata-level') || '2'));
 
     const create_ajax_wrapper = (ajax:Function, subscriptionKey:string|null) => {
         let extraHeaders = {};
 
-        // Subscribe to the route-selected event
-        document.addEventListener(ORCHESTRATOR_SELECTED, async (event) => {
-          // @ts-ignore
-          if (event.detail != null && event.detail.length > 0) {
-            // @ts-ignore
-              let route = event.detail;
-              if (typeof(route) === 'object') {
-                  route = route['num'];
-              }
-              // set extra header for route
-              // @ts-ignore
-              extraHeaders['selected-route'] = route;
-          }
-        });
+        
 
         return (options:any) => {
           let headers = options.headers || {};
@@ -86,6 +74,22 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
       }
     };
 
+    const handleMetadataLevelChanged = (event: Event): void => {
+      // @ts-ignore
+      if (event.detail != null && event.detail != null) {
+        // @ts-ignore
+        let level = event.detail;
+        if (level == null) {
+          level = 2;
+        } else if (typeof(level) == 'string') {
+          level = parseInt(level);
+        }
+        
+        renderMetadataLevel.current = level;
+      }
+    };
+    
+
     useEffect(() => {
         if (apiClient == null) {
             return;
@@ -93,6 +97,8 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
 
         // Register the event listeners
         document.addEventListener('display-notification', handleDisplayNotificationEvent);
+        document.addEventListener(METADATA_LEVEL_CHANGED, handleMetadataLevelChanged);
+
 
 
       (async () => {
@@ -192,7 +198,7 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
         
         // Now, update the activity 
         if (messageDelta.status === DELTA_STATUS_CAPTURING) {
-            activity.text = messageDelta.full.trim();
+            activity.text = textWithoutRefs(messageDelta.full.trim());
             activity.speak = false;
             activity.from.role = 'bot';
             activity.type = 'message';
@@ -394,6 +400,18 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
       window.__ss.speak(utterance);
     }
 
+    const textWithoutRefs = (text:string) => {
+      if (renderMetadataLevel.current >= 2) {
+        return text;
+      } else {
+        if (!text) {
+          return '';
+        } else {
+          return text.replace(/(\[Ref\:.*?\])/g, '');
+        }
+      }
+    };
+
 
     // @ts-ignore
     const store = window.WebChat.createStore({},
@@ -421,6 +439,9 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
                     // Post message to clear progress messages
                     // console.log("Dispatching Clear Progress Message");
                     document.dispatchEvent(new Event(CLEAR_PROGRESS, { bubbles: true }));
+
+                    // Remove references from the text (if the renderMetadataLevel is set to not render references)
+                    activity.text = textWithoutRefs(activity.text);
 
                     // If the message is a speak message, then speak it
                     if (activity.speak && activity.speak.length > 0 && activity.text.trim().length > 0) {
@@ -489,7 +510,7 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
                         && card.activity.entities.find((e:any) => e.type == "metadata") 
                         && renderCardMetadata(card.activity.entities.find((e:any) => e.type == "metadata")['metadata'])}
     
-                    {card.activity.entities && card.activity.entities.find((e:any) => e.type == "citations") && <div>
+                    {renderMetadataLevel.current >= 2 && card.activity.entities && card.activity.entities.find((e:any) => e.type == "citations") && <div>
                         <b>Citations:</b><br/>
                         {card.activity.entities.find((e:any) => e.type == "citations")['citations'].map((citation:any) => (
                         <div key={citation.id}>
@@ -510,7 +531,11 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
 
     const renderCardMetadata = (metadata:any) => {
         if (!metadata) { ( <span /> ) }
-  
+
+        if (renderMetadataLevel.current == 0) {
+          return <span />
+        }
+
         let output = [];
         for (let key in metadata) {
           if (key == "steps") {
@@ -524,6 +549,10 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
               </ul>
             </div>)
           } else if (key == "citations") {
+            if (renderMetadataLevel.current < 2) {
+              continue;
+            }
+
             output.push(<div key={"metadata-"+key}>
               <b>Citations:</b><br/>
               {metadata[key].map((citation:any) => (
@@ -544,6 +573,17 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
         return output;
       }
 
+      const typingMiddleware = () => (next:any) => ({ activeTyping }: { activeTyping: any }) => {
+        activeTyping = Object.values(activeTyping);
+        return (
+          !!activeTyping.length && (
+            <span className="webchat__typing-indicator">
+              <img src="typing.svg" alt="Typing" />
+            </span>
+          )
+        );
+      };
+
     if (directLine == null) {
         return <>
           <div>Waking up the Chat Playground...</div>
@@ -562,6 +602,7 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
             streamUrl={apiClient.stream} 
             // @ts-ignore
             webSpeechPonyfillFactory={window.__speechfactory}
+            typingIndicatorMiddleware={typingMiddleware}
           />
     } else {
         return <div>Unknown State</div>

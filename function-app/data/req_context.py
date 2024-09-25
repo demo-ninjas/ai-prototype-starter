@@ -474,9 +474,11 @@ class ReqContext(ChatContext):
                     url = path_prefix + url
 
             state = base64.urlsafe_b64encode(url.encode()).decode()
+            # logging.info("Validate Redirect Uri: " + str(self.get_auth_redirect_url()))
+            # logging.info("Validate Scopes: " + str(self.get_auth_scopes()))
             auth_url = app.get_authorization_request_url(
-                scopes=self.get_config_value('auth-scopes', os.environ.get("ENTRA_SCOPES", "User.Read")).split(","), 
-                redirect_uri=self.get_config_value("auth-redirect-uri", os.environ.get("ENTRA_REDIRECT_URI")),
+                scopes=self.get_auth_scopes(), 
+                redirect_uri=self.get_auth_redirect_url(),
                 state=state
                 )
 
@@ -488,3 +490,15 @@ class ReqContext(ChatContext):
             headers={"Location": auth_url}
         ) if auth_url is not None else func.HttpResponse(status_code=status_code)
         return False, resp
+
+    def get_auth_scopes(self) -> list[str]:
+        return self.get_config_value('auth-scopes', os.environ.get("ENTRA_SCOPES", "User.Read")).split(",")
+    
+    def get_auth_redirect_url(self) -> str:
+        redirect_url = self.get_config_value("auth-redirect-uri", os.environ.get("ENTRA_REDIRECT_URI"))
+        if '$host' in redirect_url: 
+            import logging
+            host =  self.get_req_val("x-host", self.get_req_val('disguised-host', "not-set"))
+            redirect_url = redirect_url.replace("$host", host)
+            logging.info("Redirect URL: " + redirect_url)
+        return redirect_url

@@ -1,10 +1,31 @@
 import { useEffect, useState } from 'react';
+import { METADATA_LEVEL_CHANGED } from '../data/events';
+
 import logo from '../logo.png';
 import './header.css';
 function Header() {
     const [ shouldSpeak, setShouldSpeak ] = useState(false);
+    const [ metadataLevel, setMetadataLevel ] = useState(2);
 
     useEffect(() => {
+        let qParams = new URLSearchParams(window.location.search);
+
+        // Check if the renderMetadataLevel has been set in the query string or local storage
+        let render_metadata_level = qParams.get('metadata-level');
+        if (!render_metadata_level) {
+          render_metadata_level = localStorage.getItem('metadata-level');
+        }
+        if (render_metadata_level) {
+            // Post the metadata level to the document
+            localStorage.setItem('metadata-level', render_metadata_level);
+            let metadata_level = parseInt(render_metadata_level);
+            setMetadataLevel(metadata_level);
+            setTimeout(() => {
+                document.dispatchEvent(new CustomEvent(METADATA_LEVEL_CHANGED, { detail: metadata_level }));
+            }, 8);
+        }
+
+
         let speak_setting = localStorage.getItem('should-speak');
         if (speak_setting && speak_setting == 'true') {
             // @ts-ignore
@@ -17,7 +38,7 @@ function Header() {
         }
 
 
-        let speaker_voice = new URLSearchParams(window.location.search).get('voice');
+        let speaker_voice = qParams.get('voice');
         if (!speaker_voice) {
             speaker_voice = localStorage.getItem('speaker-voice');
         }
@@ -61,6 +82,26 @@ function Header() {
                 className={ shouldSpeak ? 'speaker-on' : 'speaker-off' }
             >  
                 { shouldSpeak ? '🔊' : '🔇' }
+            </button>
+
+            <button 
+                id="metadata-toggle"
+                onClick={() => {
+                    let current_level = parseInt(localStorage.getItem('metadata-level') || '0');
+                    let new_level = (current_level + 1) % 3;
+                    localStorage.setItem('metadata-level', new_level.toString());
+                    document.dispatchEvent(new CustomEvent(METADATA_LEVEL_CHANGED, { detail: new_level }));
+                    setMetadataLevel(new_level);
+                }}
+                title="Toggle Metadata Level (None, Metadata Only, Metadata + Citations)"
+            >
+                {
+                    {
+                        0: '📕', // None
+                        1: '📘', // Metadata only
+                        2: '📚'  // Metadata + Citations
+                    }[metadataLevel]
+                }
             </button>
         </>
     );

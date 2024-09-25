@@ -1,0 +1,50 @@
+<svg width="100%" height="100" xmlns="http://www.w3.org/2000/svg">
+<circle cx="15" cy="50" r="3" style="fill:#d3cfcf;">
+    <animate
+        attributeName="cy"
+        values="50;45;50;50"
+        keyTimes="0;0.2;0.5;1"
+        dur="1.9s"
+        begin="0.13s"
+        repeatCount="indefinite" />
+    <animate
+        attributeName="fill"
+        values="#d3cfcf;#b4afaf;#d3cfcf;#d3cfcf"
+        keyTimes="0;0.2;0.5;1"
+        dur="1.9s"
+        begin="0s"
+        repeatCount="indefinite" />
+</circle>
+<circle cx="30" cy="50" r="3" style="fill:#d3cfcf;">
+    <animate
+        attributeName="cy"
+        values="50;45;50;50"
+        keyTimes="0;0.2;0.5;1"
+        dur="1.9s"
+        begin="0.43s"
+        repeatCount="indefinite" />
+    <animate
+        attributeName="fill"
+        values="#d3cfcf;#b4afaf;#d3cfcf;#d3cfcf"
+        keyTimes="0;0.2;0.5;1"
+        dur="1.9s"
+        begin="0.33s"
+        repeatCount="indefinite" />
+</circle>
+<circle cx="45" cy="50" r="3" style="fill:#d3cfcf;">
+    <animate
+        attributeName="cy"
+        values="50;45;50;50"
+        keyTimes="0;0.2;0.5;1"
+        dur="1.9s"
+        begin="0.76s"
+        repeatCount="indefinite" />
+    <animate
+        attributeName="fill"
+        values="#d3cfcf;#b4afaf;#d3cfcf;#d3cfcf"
+        keyTimes="0;0.2;0.5;1"
+        dur="1.9s"
+        begin="0.66s"
+        repeatCount="indefinite" />
+</circle>
+</svg>

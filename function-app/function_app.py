@@ -9,6 +9,26 @@ app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 logging.getLogger("azure").setLevel(logging.ERROR) ## Only log the ERRORs from the azure libraries (some of which are otherwise quite verbose in their logging)
 
 GLOBAL_HISTORY_PROVIDER = None
+PUBLIC_ORCHESTRATOR_LIST = []
+
+def build_public_orchestrator_list():
+    global PUBLIC_ORCHESTRATOR_LIST
+
+    from botframework import DEFAULT_BOT_ORCHESTRATOR
+    from aiproxy.utils.config import load_public_orchestrator_list
+    orchestrators = load_public_orchestrator_list()
+    
+    ## Add any additional orchestrators here that are not in the public list but you want to be available
+    # orchestrators.insert(0, {
+    #     "name": "Some Orchestrator Name",
+    #     "description": "Chat with the this orchestrator",
+    #     "pattern": "Completion",
+    # })
+    
+    for orchestratror in orchestrators:
+        orchestratror['default'] = orchestratror['name'] == DEFAULT_BOT_ORCHESTRATOR
+    PUBLIC_ORCHESTRATOR_LIST = orchestrators
+    return orchestrators
 
 def setup_app():
     global GLOBAL_HISTORY_PROVIDER
@@ -24,6 +44,10 @@ def setup_app():
     ## Setup a global History Provider
     from aiproxy.history import CosmosHistoryProvider
     GLOBAL_HISTORY_PROVIDER = CosmosHistoryProvider()
+
+    ## Load the Publish Orchestrator List
+    build_public_orchestrator_list()
+
     print('App setup and ready to go!')
 
 setup_app()
@@ -40,6 +64,9 @@ def refresh_config_cache(tm: func.TimerRequest) -> None:
             updated_val = load_named_config(k, False, False)
             if updated_val is not None:
                 CACHED_CONFIGS[k] = updated_val
+        
+        ## Refresh the Orchestrator list
+        build_public_orchestrator_list()
     except Exception as e:
         print(f"Error refreshing cache: {e}")
 
@@ -189,8 +216,9 @@ def refresh_caches(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="list-orchestrators", methods=["POST", "GET"])
 def orchestrator_list(req: func.HttpRequest) -> func.HttpResponse:
+    global PUBLIC_ORCHESTRATOR_LIST
+    global GLOBAL_HISTORY_PROVIDER
     import json
-    from aiproxy.utils.config import load_public_orchestrator_list
     from data import ReqContext
 
     context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
@@ -205,7 +233,7 @@ def orchestrator_list(req: func.HttpRequest) -> func.HttpResponse:
         if not valid: return login_redir
 
 
-    orchestrators = load_public_orchestrator_list()
+    orchestrators = PUBLIC_ORCHESTRATOR_LIST
     return func.HttpResponse(
         body=json.dumps({
             "orchestrators": orchestrators
@@ -690,11 +718,11 @@ def push_stream(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="connect", methods=["GET", "POST"])
 def connect(req: func.HttpRequest) -> func.HttpResponse:
     global GLOBAL_HISTORY_PROVIDER
+    global PUBLIC_ORCHESTRATOR_LIST
 
     import json
     from data import ReqContext
     from aiproxy.streaming import PubsubStreamWriter, stream_factory
-    from aiproxy.utils.config import load_public_orchestrator_list
     from botframework import DEFAULT_BOT_ORCHESTRATOR
 
     ## Build the context for the request
@@ -720,19 +748,7 @@ def connect(req: func.HttpRequest) -> func.HttpResponse:
 
     orchestrator_list = None
     if context.get_req_val("listorchestrators", False): 
-        orchestrators = load_public_orchestrator_list()
-        if orchestrators is not None:
-            orchestrator_list = []
-            for orchestrator in orchestrators:
-                orchestrator_name = orchestrator.get('name')
-                if orchestrator_name is None: continue
-                orchestrator_list.append({
-                    "name": orchestrator.get('name', '<unnamed>'),
-                    "description": orchestrator.get('description', None),
-                    "pattern": orchestrator.get('pattern', None),
-                    "requirements": orchestrator.get('requirements', None),
-                    "default": orchestrator_name == DEFAULT_BOT_ORCHESTRATOR
-                })
+        orchestrator_list = PUBLIC_ORCHESTRATOR_LIST
 
     ## Return the connection details to the frontend
     response = {
@@ -810,8 +826,8 @@ def callback(req: func.HttpRequest) -> func.HttpResponse:
 
     result = app.acquire_token_by_authorization_code(
         context.get_req_val("code"),
-        scopes=os.environ.get("ENTRA_SCOPES").split(","), 
-        redirect_uri=os.environ.get("ENTRA_REDIRECT_URI"),
+        scopes=context.get_auth_scopes(),
+        redirect_uri=context.get_auth_redirect_url(),
         )
 
     if "error" in result:
@@ -837,7 +853,7 @@ def callback(req: func.HttpRequest) -> func.HttpResponse:
 
     is_secure = 'Secure;' if req.url.startswith("https") else ''
     headers = { 
-        "Set-Cookie": f"token={id_token};{is_secure} Path=/; Max-Age=3600", # HttpOnly; 
+        "Set-Cookie": f"token={id_token};{is_secure} Path=/; Max-Age=28800", # HttpOnly; 
         "Location": send_to_url
     }
 
