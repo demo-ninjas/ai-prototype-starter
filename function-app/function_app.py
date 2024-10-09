@@ -868,6 +868,7 @@ def serve_ui(req: func.HttpRequest) -> func.HttpResponse:
     import os
     from azure.storage.blob import BlobServiceClient
     from azure.core.exceptions import ResourceNotFoundError
+    from azure.identity import DefaultAzureCredential
     from data import ReqContext
     from utils.media_types import infer_content_type
 
@@ -942,19 +943,31 @@ def serve_ui(req: func.HttpRequest) -> func.HttpResponse:
         credential = context.get_config_value("ui-storage-account-key")
         if account_url is not None and credential is not None:
             blob_service_client = BlobServiceClient(account_url, credential=credential)
+
     
-    if blob_service_client is None: # Fallback to default storage account
+    ## Check for a Managed Identity Config
+    account_name = context.get_config_value("ui-storage-account-name", os.environ.get("UI_STORAGE_ACCOUNT_NAME", None))
+    if blob_service_client is None and account_name is not None:
+        blob_service_client = BlobServiceClient(account_url=f"https://{account_name}.blob.core.windows.net", credential=DefaultAzureCredential())
+        
+    # Fallback to default storage account
+    if blob_service_client is None: 
         blob_storage_connection = os.environ.get("UI_STORAGE_CONNECTION_STRING")
         if blob_storage_connection is not None: 
             blob_service_client = BlobServiceClient.from_connection_string(blob_storage_connection)
         else: 
             account_url = os.environ.get("UI_STORAGE_ACCOUNT_URL")
             credential = os.environ.get("UI_STORAGE_ACCOUNT_KEY")
-            blob_service_client = BlobServiceClient(account_url, credential=credential)
+            if account_url is not None and credential is not None:
+                blob_service_client = BlobServiceClient(account_url, credential=credential)
+            else: 
+                account_name = os.environ.get("UI_STORAGE_ACCOUNT_NAME", os.environ.get("AZURE_STORAGE_ACCOUNT_NAME", None))
+                if account_name is not None:
+                    blob_service_client = BlobServiceClient(account_url=f"https://{account_name}.blob.core.windows.net")
             
     if blob_service_client is None: 
         return func.HttpResponse(
-            body="Not Found", 
+            body="Malformed Configuration", 
             status_code=404
         )
 
@@ -966,7 +979,7 @@ def serve_ui(req: func.HttpRequest) -> func.HttpResponse:
 
     if container_name is None:
         return func.HttpResponse(
-            body="Not Found", 
+            body="Malformed Configuration - could not determine where to look for the file", 
             status_code=404
         )
     
