@@ -282,7 +282,10 @@ class BotframeworkFacade:
         waiting_event = threading.Event()
         try: 
             msg_id = self._context.thread_id + "-" + uuid4().hex
-            # threading.Thread(target=self._send_typing_whilst_waiting, args=[msg_id, waiting_event], daemon=True).start()  ## let's not do this for now...
+
+            if self._context.get_config_value("maintain-typing", "true").lower() in ['true', 'yes', '1']:
+                threading.Thread(target=self._send_typing_whilst_waiting, args=[msg_id, waiting_event], daemon=True).start()
+
             self.send_typing_activity()
             self._context.init_history()  ## Ensure that the history for this conversation has been loaded
             self._context.current_msg_id = msg_id
@@ -303,43 +306,35 @@ class BotframeworkFacade:
                 ## The response was successful, so we want to send it
                 activity = self.create_default_activity(id=msg_id)
 
-                if resp.message is not None and resp.message.startswith("```"):
-                    ## The message is a code block, so we want to send it as an attachment
-                    activity.text = ""
-                    ## Extract the code block (removing the backticks and any language specifier)
-                    resp.message = resp.message[3:-3].strip()
-                    squiggly_pos = resp.message.find('{')
-                    if squiggly_pos > 0: 
-                        resp.message = resp.message[squiggly_pos:]
-                    resp.message = resp.message.strip()
-                    if resp.message.startswith("{" or resp.message.startswith("[")):
-                        ## The code block is a JSON object, so we want to send it as metadata
-                        import json
-                        json_data = json.loads(resp.message)
-                        if json_data.get("type", None) == "AdaptiveCard":
-                            activity.attachments = [ { "contentType": "application/vnd.microsoft.card.adaptive", "content": json_data } ]
-                        else: 
-                            activity.entities = [ { "metadata": json_data, "type": "metadata" } ]
-                    else:
-                        activity.attachments = [ { "contentType": "application/code", "content": resp.message } ]
-                if resp.message is not None and resp.message.startswith("{"):
-                    ## The message is a JSON object, so we want to send it as metadata
-                    try: 
-                        resp.message = resp.message.strip()
-                        if resp.message.startswith("{" or resp.message.startswith("[")):
-                            ## The code block is a JSON object, so we want to send it as metadata
-                            import json
-                            json_data = json.loads(resp.message)
-                            activity.text = ""
-                            if json_data.get("type", None) == "AdaptiveCard":
-                                activity.attachments = [ { "contentType": "application/vnd.microsoft.card.adaptive", "content": json_data } ]
-                            else: 
-                                activity.entities = [ { "metadata": json_data, "type": "metadata" } ]
-                        else:
-                            activity.attachments = [ { "contentType": "application/code", "content": resp.message } ]
-                    except Exception as e:
-                        ## Not JSON - so just send as text
-                        activity.text = resp.message
+                resp_type = resp.metadata.get("response-type", None) if resp.metadata is not None else None
+                if resp_type is None:
+                    resp_type = self._context.get_req_val("response-type", self._context.get_config_value("default-response-type", None))
+                    if resp_type is not None:
+                        resp.metadata["response-type"] = resp_type
+                if resp_type is None:
+                    resp_type = "text"
+                
+                resp_type = resp_type.lower().strip()
+                if '/' in resp_type: 
+                    resp_type = resp_type[resp_type.find('/')+1: ]
+                if resp_type in ['json', 'yaml',  'adaptivecard', 'adaptive-card', 'card', 'vnd.microsoft.card.adaptive', 'html', 'xml' ]:
+                    ## This is a structured response, so handle appropriately
+                    import json
+                    from aiproxy.functions.string_functions import extract_code_block_from_markdown
+                    resp.message = extract_code_block_from_markdown(resp.message, return_original_if_not_found=True)
+
+                    if resp_type in [ 'adaptive-card', 'adaptivecard', 'vnd.microsoft.card.adaptive','card' ]:
+                        activity.attachments = [ { "contentType": "application/vnd.microsoft.card.adaptive", "content": json.loads(resp.message) } ]
+                    elif resp_type == 'json': 
+                        activity.attachments = [ { "contentType": "application/json", "content": json.loads(resp.message) } ]
+                    elif resp_type == 'xml': 
+                        activity.attachments = [ { "contentType": "application/xml", "content": resp.message } ]
+                    elif resp_type == 'yaml': 
+                        activity.attachments = [ { "contentType": "application/x-yaml", "content": resp.message } ]
+                    elif resp_type == 'html': 
+                        activity.attachments = [ { "contentType": "text/html", "content": resp.message } ]
+                    else: 
+                        activity.attachments = [ { "contentType": "application/" + resp_type, "content": resp.message } ]                                    
                 else: 
                     ## The message is a plain text message
                     activity.text = resp.message

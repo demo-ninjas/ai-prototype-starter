@@ -67,6 +67,14 @@ def refresh_config_cache(tm: func.TimerRequest) -> None:
         
         ## Refresh the Orchestrator list
         build_public_orchestrator_list()
+
+        ## Update the configs in each of the Orchestrators, Agents + Proxies
+        from aiproxy import GLOBAL_PROXIES_REGISTRY
+        GLOBAL_PROXIES_REGISTRY.reset()
+        
+        from aiproxy.orchestration.agents import reset_agents
+        reset_agents()
+
     except Exception as e:
         print(f"Error refreshing cache: {e}")
 
