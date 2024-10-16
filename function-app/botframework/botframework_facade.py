@@ -385,11 +385,7 @@ class BotframeworkFacade:
         self._context.push_stream_update(resp.to_dict())
 
     def send_suggestions(self):
-        ## Process the user's activity message
-        ## This is a requirement of the botframework's web client
-        from uuid import uuid4
         from aiproxy.orchestration.agents import agent_factory
-        from aiproxy.data import ChatConfig
 
         ## Load the suggestions agent
         agent_name = self._context.get_config_value("suggestions-agent", "suggestions")
@@ -406,6 +402,25 @@ class BotframeworkFacade:
                         activity.suggestedActions = { "actions": suggestion_actions }
                         activity_resp = BotFrameworkActivityResponse.new_with_activity(activity)
                         self._context.push_stream_update(activity_resp.to_dict())
+            except Exception as e:
+                import logging
+                import traceback
+                logging.error(f"Failed to generate suggestions, will ignore. Error: {e}")
+                logging.error(traceback.format_exc())
+
+    def send_sentiment(self):
+        from aiproxy.orchestration.agents import agent_factory
+
+        ## Load the suggestions agent
+        agent_name = self._context.get_config_value("sentiment-agent", "sentiment")
+        agent = agent_factory(agent_name)
+        if agent is not None:
+            try:
+                result = agent.process_message("Determine the sentiment", self._context)
+                if result is not None and not result.failed:
+                    suggestions = result.metadata.get("sentiment", None)
+                    if suggestions is not None:
+                        self._context.push_stream_update(suggestions, "sentiment")
             except Exception as e:
                 import logging
                 import traceback

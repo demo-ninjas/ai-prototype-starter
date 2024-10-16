@@ -8,3 +8,14 @@
     color: #fff;
     font-style: italic;
 }
+
+#app-footer .sentiment-div {
+    display: absolute;
+    position: absolute;
+    bottom: 1.2rem;
+    left: 0.5rem;
+    font-size: 0.9rem;
+    color: #fff;
+    font-style: normal;
+    cursor: help;
+}

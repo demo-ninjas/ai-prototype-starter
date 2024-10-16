@@ -545,17 +545,17 @@ def bf_conversation_orchestrator(context:df.DurableOrchestrationContext):
     # if from_speech: 
     #    post_prompt_tasks.append(context.call_activity("send_speech_response", context.get_input()))
     
-    outputs = yield context.task_all([  
-        context.call_activity("bf_send_suggestions", context.get_input())
-    ])
+    post_activities = []
+    if context.get_input().get_config_value("send-suggestions", True):
+        post_activities.append(context.call_activity("bf_send_suggestions", context.get_input()))
+    if context.get_input().get_config_value("send-sentiment", True):
+        post_activities.append(context.call_activity("bf_send_sentiment", context.get_input()))
+    outputs = yield context.task_all(post_activities)
     ## Other things that might be useful to do: 
     #   - Pull out key information about the conversation into the user profile notes to remember for future conversations 
     #   - Check if the conversation is getting long, and if it is, summarise it and set a flag in the conversation history object to use the summary instead of the history
-    #   - Maintain a list of recipes added to cart / set in meal plan against the user profile to provide this information to the AI in future conversations
     #   - Do some sentiment analysis of the conversation, and if the convo is going towards a dark place, make some notes in the conversation that inform the AI to try and lift the conversation back 
     #   - Score the response from the AI against some rules, and for responses that do not score well, send a snapshot of the convo + the response to somewhere where it can be further analysed by a human
-    #   - Keep a global record of recipe impressions, and subsequent usage of the recipes (saved / added to cart etc...)
-    #   - Check the length of the user profile notes, and when they get too long, go ahead and summarise them into their key points
 
 
 
@@ -607,6 +607,30 @@ def bf_send_suggestions(context):
     ## Process the User's Prompt activity
     outcome = facade.send_suggestions()
     return outcome
+
+
+@app.activity_trigger(input_name="context")
+def bf_send_sentiment(context):
+    global GLOBAL_HISTORY_PROVIDER
+
+    from botframework import BotframeworkFacade
+
+    # The Thead ID is required - without it we are not participating in a conversation
+    #  so raise if it's not provided
+    if context.thread_id is None:
+        raise ValueError("Conversation ID (conversation_id) or Thread (thread) is required")
+    
+    ## Init the Thread History (if it's not already initialised)
+    context.history_provider = GLOBAL_HISTORY_PROVIDER
+    context.init_history()
+
+    ## Load the Botframework Facade
+    facade = BotframeworkFacade(context)
+
+    ## Process the sentiment of the conversation
+    outcome = facade.send_sentiment()
+    return outcome
+
 
 @app.route(route="webchat/conversations/{conversation_id}", methods=["GET", "POST"])
 def bf_conversation(req: func.HttpRequest) -> func.HttpResponse:

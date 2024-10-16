@@ -6,7 +6,7 @@ import { MessageDelta, DELTA_STATUS_CAPTURING, DELTA_STATUS_EXPIRED } from '../d
 import chatStyleOptions from './chat-style-options';
 import './chat-window.css';
 
-import { CLEAR_STEPS, CLEAR_PROGRESS, STEP_MESSAGE, PROGRESS_MESSAGE,  METADATA_LEVEL_CHANGED } from '../data/events';
+import { CLEAR_STEPS, CLEAR_PROGRESS, STEP_MESSAGE, PROGRESS_MESSAGE,  METADATA_LEVEL_CHANGED, SENTIMENT_UPDATE } from '../data/events';
 
 const messageDelta = new MessageDelta();
 
@@ -222,6 +222,8 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
               }
               document.dispatchEvent(new CustomEvent(STEP_MESSAGE, { bubbles: true, detail: msg }));
           }
+      } else if (activity.name == "sentiment") {
+          document.dispatchEvent(new CustomEvent(SENTIMENT_UPDATE, { bubbles: true, detail: activity.value }));
       }
     };
 
