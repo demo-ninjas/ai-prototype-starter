@@ -110,7 +110,7 @@ def chat(req: func.HttpRequest) -> func.HttpResponse:
     try: 
         orchestrator_config = None
         orchestrator_name = None
-        orchestrator_name = context.get_req_val("orchestrator", None) or context.get_config_value("orchestrator", None)
+        orchestrator_name = context.get_req_val("orchestrator", context.get_config_value("orchestrator", None))
         if orchestrator_name is None: 
             orchestrator_name = context.get_config_value("default-orchestrator", "completion")
             orchestrator_config = ChatConfig.load(orchestrator_name, False)
@@ -120,7 +120,7 @@ def chat(req: func.HttpRequest) -> func.HttpResponse:
         if orchestrator_config is None: 
             ## Create a default Config
             orchestrator_config = context.config.clone()
-            orchestrator_config['type'] = context.get_req_val("orchestrator-type", None) or context.get_config_value("orchestrator-type", None) or 'completion'
+            orchestrator_config['type'] = context.get_req_val("orchestrator-type", context.get_config_value("orchestrator-type", 'completion'))
             orchestrator_config['name'] = orchestrator_name
             
         ## Load the Orchestrator/Proxy and send the message
@@ -955,9 +955,7 @@ def serve_ui(req: func.HttpRequest) -> func.HttpResponse:
 
     if not valid: 
         ## Check if it's an allowed known url
-        check_path = path
-        if check_path.startswith("/"): check_path = check_path[1:]
-        if check_path in ["favicon.ico", "robots.txt", "sitemap.xml", "manifest.json"]:
+        if any(path.endswith(suffix) for suffix in ["favicon.ico", "robots.txt", "sitemap.xml", "manifest.json"]):
             valid = True
 
     if not valid:
