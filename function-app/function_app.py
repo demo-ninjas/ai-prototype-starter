@@ -724,7 +724,67 @@ def push_stream(req: func.HttpRequest) -> func.HttpResponse:
         client = WebPubSubServiceClient.from_connection_string(connection_string=connection_string, hub="hub")
         logging.info("Endpoint: " + client._config.endpoint)
         logging.info("Hub:" + client._config.hub)
-        client.send_to_group(group=context.get_req_val("thread"), message="Hello World")
+
+        data = context.get_req_val("data", None)
+        if data is None: 
+            data = context.body_bytes.decode("utf-8")
+        if data is None or len(data) == 0:
+            data = "Test"
+        
+        thread = context.get_req_val("thread", None)
+        if thread is None:
+            thread = "debug-stream"
+
+        client.send_to_group(group=context.get_req_val("thread"), message=data)
+    except Exception as e:
+        import traceback
+        logging.error(f"Error in push_stream: {str(e)}")
+        traceback.print_exc()
+        return func.HttpResponse(
+            body=str(e) + "\n\n" + traceback.format_exc(),
+            status_code=200, 
+            headers={
+                "content-type": "text/plain",
+            }
+        )
+    
+    return func.HttpResponse(
+        body="ok",
+        status_code=200, 
+        headers={
+            "content-type": "text/plain",
+        }
+    )
+
+
+@app.route(route="ip-notify", methods=["POST", "GET"])
+def ip_notify(req: func.HttpRequest) -> func.HttpResponse:
+    from data import ReqContext
+    from azure.messaging.webpubsubservice import WebPubSubServiceClient
+    import logging
+    import os
+    
+    try:
+        context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
+
+        ## Confirm that the request is authorised
+        valid, login_redir = context.validate_request(default_fail_status=401)
+        if not valid: return login_redir
+
+        val = context.get_req_val("ip", None)
+        if val is None: 
+            val = context.body_bytes.decode("utf-8")
+        print(f"IP: {val}")
+
+        thread = context.get_req_val("thread", None)
+        if thread is None:
+            thread = "ip-notify"
+
+        connection_string = context.get_config_value('connection') or context.get_config_value('connection_string') or os.environ.get('PUBSUB_CONNECTION_STRING', None)
+        client = WebPubSubServiceClient.from_connection_string(connection_string=connection_string, hub="hub")
+        logging.info("Endpoint: " + client._config.endpoint)
+        logging.info("Hub:" + client._config.hub)
+        client.send_to_group(group=thread, message=val)
     except Exception as e:
         import traceback
         logging.error(f"Error in push_stream: {str(e)}")

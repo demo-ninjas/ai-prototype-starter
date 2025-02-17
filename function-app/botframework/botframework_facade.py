@@ -212,7 +212,14 @@ class BotframeworkFacade:
         else: 
             ## Send the start activity
             resp = BotFrameworkActivityResponse.new_with_activity(BotFrameworkActivity.new_text_message(conversation_id=self._context.thread_id, bot_name=self.bot_name, bot_id=self.bot_id, bot_channel=self.bot_channel, message=self.welcome_message, speech=self.welcome_speech))
-            self._context.push_stream_update(resp.to_dict())
+            try:
+                self._context.push_stream_update(resp.to_dict())
+            except Exception as e:
+                import logging
+                import traceback
+                logging.error(f"Error sending start activity: {e}")
+                logging.error(traceback.format_exc())
+            
 
     def process_user_activity(self, prompt:str = None) -> bool:
         ## Process the user's activity message
