@@ -24,3 +24,4 @@ Whoosh
 
 
 git+https://github.com/demo-ninjas/aiproxy.git
+git+https://github.com/demo-ninjas/basic-sub-auth.git

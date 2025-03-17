@@ -86,12 +86,15 @@ def chat(req: func.HttpRequest) -> func.HttpResponse:
     from aiproxy.orchestration import orchestrator_factory
     from aiproxy.data import ChatConfig
     from data import ReqContext
+    from subauth.function_utils import validate_function_request
 
-    context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
 
-    ## Confirm that the request is authorised
-    valid, login_redir = context.validate_request(default_fail_status=401)
-    if not valid: return login_redir
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
 
     ## Load the prompt for this request
     prompt = context.get_req_val("prompt", None)
@@ -140,7 +143,7 @@ def chat(req: func.HttpRequest) -> func.HttpResponse:
     context.init_history()  ## Ensure that the history for this conversation has been loaded
     resp = proxy.send_message(prompt, context, override_system_prompt=override_system_prompt, use_functions=use_functions, timeout_secs=timeout_secs)
 
-    return func.HttpResponse(
+    response = func.HttpResponse(
         body=json.dumps({
             "response": resp.to_api_response(), 
             "context": context.build_context()
@@ -150,6 +153,10 @@ def chat(req: func.HttpRequest) -> func.HttpResponse:
             "content-type": "application/json",
         }
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 @app.route(route="completion", methods=["POST", "GET"])
 def chat_completion(req: func.HttpRequest) -> func.HttpResponse:
@@ -158,13 +165,16 @@ def chat_completion(req: func.HttpRequest) -> func.HttpResponse:
     import json
     from aiproxy import CompletionsProxy, GLOBAL_PROXIES_REGISTRY
     from data import ReqContext
+    from subauth.function_utils import validate_function_request
 
-    context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
+
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
     
-    ## Confirm that the request is authorised
-    valid, login_redir = context.validate_request(default_fail_status=401)
-    if not valid: return login_redir
-
     proxy = GLOBAL_PROXIES_REGISTRY.load_proxy(context.config['default-completion-proxy'], CompletionsProxy)
 
     prompt = context.get_req_val("prompt", None)
@@ -180,7 +190,7 @@ def chat_completion(req: func.HttpRequest) -> func.HttpResponse:
 
     context.init_history()  ## Ensure that the history for this conversation has been loaded
     resp = proxy.send_message(prompt, context, override_system_prompt=override_system_prompt, use_functions=use_functions, timeout_secs=timeout_secs)
-    return func.HttpResponse(
+    response = func.HttpResponse(
         body=json.dumps({
             "response": resp.to_api_response(), 
             "context": context.build_context()
@@ -190,6 +200,10 @@ def chat_completion(req: func.HttpRequest) -> func.HttpResponse:
             "content-type": "application/json",
         }
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 
 @app.route(route="refresh-caches", methods=["POST", "GET"])
@@ -197,11 +211,16 @@ def refresh_caches(req: func.HttpRequest) -> func.HttpResponse:
     from aiproxy.utils.config import CACHED_CONFIGS
     from aiproxy import GLOBAL_PROXIES_REGISTRY
     from data import ReqContext
+    from subauth.function_utils import validate_function_request
 
-    context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
-    ## Confirm that the request is authorised
-    valid, login_redir = context.validate_request(default_fail_status=401, allow_entra_user=False)
-    if not valid: return login_redir
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
+
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
+    
 
     if context.is_admin is not True:
         return func.HttpResponse(
@@ -214,13 +233,17 @@ def refresh_caches(req: func.HttpRequest) -> func.HttpResponse:
     CACHED_CONFIGS.clear()
     GLOBAL_PROXIES_REGISTRY._proxies.clear()
     
-    return func.HttpResponse(
+    response = func.HttpResponse(
         body="ok",
         status_code=200, 
         headers={
             "content-type": "text/plain",
         }
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 @app.route(route="list-orchestrators", methods=["POST", "GET"])
 def orchestrator_list(req: func.HttpRequest) -> func.HttpResponse:
@@ -228,12 +251,15 @@ def orchestrator_list(req: func.HttpRequest) -> func.HttpResponse:
     global GLOBAL_HISTORY_PROVIDER
     import json
     from data import ReqContext
+    from subauth.function_utils import validate_function_request
 
-    context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
-    ## Confirm that the request is authorised
-    valid, login_redir = context.validate_request(default_fail_status=401)
-    if not valid: return login_redir
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
 
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
 
     ## Confirm that the request is authorised (either with a subscription or logged in as a user)
     if context.user_id is None or context.user_id == '?':
@@ -242,7 +268,7 @@ def orchestrator_list(req: func.HttpRequest) -> func.HttpResponse:
 
 
     orchestrators = PUBLIC_ORCHESTRATOR_LIST
-    return func.HttpResponse(
+    response = func.HttpResponse(
         body=json.dumps({
             "orchestrators": orchestrators
         }),
@@ -251,18 +277,26 @@ def orchestrator_list(req: func.HttpRequest) -> func.HttpResponse:
             "content-type": "application/json",
         }
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 @app.route(route="who-am-i", methods=["POST", "GET"])
 def who_am_i(req: func.HttpRequest) -> func.HttpResponse:
     import json
     from data import ReqContext
+    from subauth.function_utils import validate_function_request
 
-    context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
-    ## Confirm that the request is authorised
-    valid, login_redir = context.validate_request(default_fail_status=401)
-    if not valid: return login_redir
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
 
-    return func.HttpResponse(
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
+
+    response = func.HttpResponse(
         body=json.dumps({
             "id": context.user_id, 
             "name": context.user_name,
@@ -273,18 +307,25 @@ def who_am_i(req: func.HttpRequest) -> func.HttpResponse:
             "content-type": "application/json",
         }
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 @app.route(route="a-list-configs", methods=["POST", "GET"])
 def admin_config_list(req: func.HttpRequest) -> func.HttpResponse:
     import json
     from aiproxy.utils.config import load_configs
     from data import ReqContext
+    from subauth.function_utils import validate_function_request
 
-    context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
-    
-    ## Confirm that the request is authorised
-    valid, login_redir = context.validate_request(default_fail_status=401, allow_entra_user=False)
-    if not valid: return login_redir
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
+
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
 
     if not context.is_admin:
         return func.HttpResponse(
@@ -295,7 +336,7 @@ def admin_config_list(req: func.HttpRequest) -> func.HttpResponse:
         )
     
     configs = load_configs(False)
-    return func.HttpResponse(
+    response = func.HttpResponse(
         body=json.dumps({
             "configs": configs
         }),
@@ -304,18 +345,25 @@ def admin_config_list(req: func.HttpRequest) -> func.HttpResponse:
             "content-type": "application/json",
         }
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 @app.route(route="a-get-config", methods=["POST", "GET"])
 def admin_get_config(req: func.HttpRequest) -> func.HttpResponse:
     import json
     from aiproxy.utils.config import get_config_record
     from data import ReqContext
+    from subauth.function_utils import validate_function_request
 
-    context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
-    
-    ## Confirm that the request is authorised
-    valid, login_redir = context.validate_request(default_fail_status=401, allow_entra_user=False)
-    if not valid: return login_redir
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
+
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
 
     if not context.is_admin:
         return func.HttpResponse(
@@ -336,7 +384,7 @@ def admin_get_config(req: func.HttpRequest) -> func.HttpResponse:
         )
     
     config_record = get_config_record(config)
-    return func.HttpResponse(
+    response = func.HttpResponse(
         body=json.dumps({
             "config": config_record
         }),
@@ -345,18 +393,25 @@ def admin_get_config(req: func.HttpRequest) -> func.HttpResponse:
             "content-type": "application/json",
         }
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 @app.route(route="a-update-config", methods=["POST"])
 def admin_update_config(req: func.HttpRequest) -> func.HttpResponse:
     import json
     from aiproxy.utils.config import update_config
     from data import ReqContext
+    from subauth.function_utils import validate_function_request
 
-    context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
-    
-    ## Confirm that the request is authorised
-    valid, login_redir = context.validate_request(default_fail_status=401, allow_entra_user=False)
-    if not valid: return login_redir
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
+
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
 
     if not context.is_admin:
         return func.HttpResponse(
@@ -377,13 +432,18 @@ def admin_update_config(req: func.HttpRequest) -> func.HttpResponse:
     
     update_config(config_record, by_user=context.user_id)
 
-    return func.HttpResponse(
+    response = func.HttpResponse(
         body=json.dumps({ "status": "ok" }),
         status_code=200, 
         headers={
             "content-type": "application/json",
         }
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
+
 
 
 
@@ -396,12 +456,15 @@ def chat_with_assistant(req: func.HttpRequest) -> func.HttpResponse:
     from aiproxy.orchestration.multi_agent_orchestrator import MultiAgentOrchestrator
     from aiproxy.data import ChatConfig
     from data import ReqContext
+    from subauth.function_utils import validate_function_request
 
-    context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
-    
-    ## Confirm that the request is authorised
-    valid, login_redir = context.validate_request(default_fail_status=401)
-    if not valid: return login_redir
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
+
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
 
     context.init_history()  ## Ensure that the history for this conversation has been loaded
 
@@ -436,7 +499,7 @@ def chat_with_assistant(req: func.HttpRequest) -> func.HttpResponse:
             raise AssertionError("The proxy is not an AssistantProxy")
 
     chat_responses = [resp.to_api_response() for resp in result]
-    return func.HttpResponse(
+    response = func.HttpResponse(
         body=json.dumps({
             "response": chat_responses, 
             "context": context.build_context()
@@ -446,6 +509,10 @@ def chat_with_assistant(req: func.HttpRequest) -> func.HttpResponse:
             "content-type": "application/json",
         }
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 
 
@@ -467,13 +534,15 @@ def bf_start_conversation(req: func.HttpRequest) -> func.HttpResponse:
     import json
     from data import ReqContext
     from botframework import BotframeworkFacade
+    from subauth.function_utils import validate_function_request
 
-    # Build the context for the request
-    context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
 
-    ## Confirm that the request is authorised
-    valid, login_redir = context.validate_request()
-    if not valid: return login_redir
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
 
     ## Load the Botframework Facade
     facade = BotframeworkFacade(context)
@@ -481,16 +550,20 @@ def bf_start_conversation(req: func.HttpRequest) -> func.HttpResponse:
     ## Send the welcome activity to the stream + respond OK
     facade.send_start_activity()
 
-    response = {
+    resp = {
         "context": context.build_context(),
         ## And anything else relevant to the frontend 
     }
 
-    return func.HttpResponse(
-        body=json.dumps(response, indent=4),
+    response = func.HttpResponse(
+        body=json.dumps(resp, indent=4),
         status_code=200, 
         headers={"Content-Type": "application/json"}
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 
 @app.route(route="webchat/conversations/{conversation_id}/activities", methods=["POST"])
@@ -500,13 +573,15 @@ async def bf_conversation_activity(req: func.HttpRequest, client) -> func.HttpRe
 
     from data import ReqContext
     from botframework import BotframeworkFacade
+    from subauth.function_utils import validate_function_request
 
-    # Build the context for the request
-    context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
 
-    ## Confirm that the request is authorised
-    valid, login_redir = context.validate_request()
-    if not valid: return login_redir
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
 
     # The Thead ID is required - without it we are not participating in a conversation
     #  so raise if it's not provided
@@ -531,6 +606,9 @@ async def bf_conversation_activity(req: func.HttpRequest, client) -> func.HttpRe
     instance_id = await client.start_new("bf_conversation_orchestrator", client_input=context)
     response = client.create_check_status_response(req, instance_id)
     facade.send_typing_activity()
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
     return response
 
 @app.orchestration_trigger(context_name="context")
@@ -639,13 +717,16 @@ def bf_conversation(req: func.HttpRequest) -> func.HttpResponse:
     import json
     from data import ReqContext
     from botframework import BotframeworkFacade
+    from subauth.function_utils import validate_function_request
 
-    # Build the context for the request
-    context = ReqContext(req ,history_provider=GLOBAL_HISTORY_PROVIDER)
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
 
-    ## Confirm that the request is authorised
-    valid, login_redir = context.validate_request()
-    if not valid: return login_redir
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
+
 
     ## Load the Botframework Facade
     facade = BotframeworkFacade(context)
@@ -653,16 +734,20 @@ def bf_conversation(req: func.HttpRequest) -> func.HttpResponse:
     ## Send the welcome activity to the stream + respond OK
     facade.send_start_activity()
 
-    response = {
+    resp = {
         "context": context.build_context(),
         ## And anything else relevant to the frontend 
     }
 
-    return func.HttpResponse(
-        body=json.dumps(response, indent=4),
+    response = func.HttpResponse(
+        body=json.dumps(resp, indent=4),
         status_code=200, 
         headers={"Content-Type": "application/json"}
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 @app.route(route="webchat/conversations/{conversation_id}/messages", methods=["GET", "POST"])
 def bf_conversation_messages(req: func.HttpRequest) -> func.HttpResponse:
@@ -682,12 +767,15 @@ def create_stream(req: func.HttpRequest) -> func.HttpResponse:
     from uuid import uuid4
     from data import ReqContext
     from aiproxy.streaming import stream_factory, PubsubStreamWriter, BotframeworkStreamWriter
+    from subauth.function_utils import validate_function_request
 
-    context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
 
-    ## Confirm that the request is authorised
-    valid, login_redir = context.validate_request(default_fail_status=401)
-    if not valid: return login_redir
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
 
     stream_id = context.stream_id or context.thread_id or uuid4().hex
     writer = stream_factory('pubsub', stream_id, context.get_config_value('stream-config'))
@@ -695,7 +783,7 @@ def create_stream(req: func.HttpRequest) -> func.HttpResponse:
     if type(writer) is PubsubStreamWriter:
         stream_url = writer.generate_access_url()
 
-    return func.HttpResponse(
+    response = func.HttpResponse(
         body=json.dumps({
             "stream-id": stream_id,
             "stream-url": stream_url
@@ -705,6 +793,10 @@ def create_stream(req: func.HttpRequest) -> func.HttpResponse:
             "content-type": "application/json",
         }
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 @app.route(route="push-stream", methods=["POST", "GET"])
 def push_stream(req: func.HttpRequest) -> func.HttpResponse:
@@ -712,9 +804,16 @@ def push_stream(req: func.HttpRequest) -> func.HttpResponse:
     from azure.messaging.webpubsubservice import WebPubSubServiceClient
     import logging
     import os
+    from subauth.function_utils import validate_function_request
+
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
 
     try:
-        context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
+        context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
         
         ## Confirm that the request is authorised
         valid, login_redir = context.validate_request(default_fail_status=401)
@@ -748,13 +847,17 @@ def push_stream(req: func.HttpRequest) -> func.HttpResponse:
             }
         )
     
-    return func.HttpResponse(
+    response = func.HttpResponse(
         body="ok",
         status_code=200, 
         headers={
             "content-type": "text/plain",
         }
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 
 @app.route(route="ip-notify", methods=["POST", "GET"])
@@ -763,9 +866,16 @@ def ip_notify(req: func.HttpRequest) -> func.HttpResponse:
     from azure.messaging.webpubsubservice import WebPubSubServiceClient
     import logging
     import os
-    
+    from subauth.function_utils import validate_function_request
+
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
+
     try:
-        context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
+        context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
 
         ## Confirm that the request is authorised
         valid, login_redir = context.validate_request(default_fail_status=401)
@@ -797,13 +907,17 @@ def ip_notify(req: func.HttpRequest) -> func.HttpResponse:
             }
         )
     
-    return func.HttpResponse(
+    response = func.HttpResponse(
         body="ok",
         status_code=200, 
         headers={
             "content-type": "text/plain",
         }
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 
 
@@ -816,14 +930,15 @@ def connect(req: func.HttpRequest) -> func.HttpResponse:
     from data import ReqContext
     from aiproxy.streaming import PubsubStreamWriter, stream_factory
     from botframework import DEFAULT_BOT_ORCHESTRATOR
+    from subauth.function_utils import validate_function_request
 
-    ## Build the context for the request
-    context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
 
-    ## Confirm that the request is authorised
-    override_redirect_path = context.get_req_val("redirect", None)
-    valid, login_redir = context.validate_request(override_redirect=override_redirect_path)
-    if not valid: return login_redir
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
 
     ## Generate Speech Services Access Key
     speech_key, speech_region = generate_speech_access_key()
@@ -843,7 +958,7 @@ def connect(req: func.HttpRequest) -> func.HttpResponse:
         orchestrator_list = PUBLIC_ORCHESTRATOR_LIST
 
     ## Return the connection details to the frontend
-    response = {
+    resp = {
         "context": context.build_context(),
         "thread": context.thread_id,
         "stream": stream_url,
@@ -853,18 +968,22 @@ def connect(req: func.HttpRequest) -> func.HttpResponse:
         "name": context.user_name,
     }
     if orchestrator_list is not None:
-        response["orchestrators"] = orchestrator_list
+        resp["orchestrators"] = orchestrator_list
 
     ## Add headers...
     headers = { 
         "Content-Type": "application/json",
     }
 
-    return func.HttpResponse(
-        body=json.dumps(response, indent=4), 
+    response = func.HttpResponse(
+        body=json.dumps(resp, indent=4), 
         status_code=200, 
         headers=headers
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 
 
@@ -874,13 +993,15 @@ def refresh_speechtoken(req: func.HttpRequest) -> func.HttpResponse:
 
     import json
     from data import ReqContext
-    
-    ## Build the context for the request
-    context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
+    from subauth.function_utils import validate_function_request
 
-    ## Confirm that the request is authorised
-    valid, login_redir = context.validate_request()
-    if not valid: return login_redir
+    ## Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, default_fail_status=401)
+    if not valid: 
+        login_resp.headers["x-path"] = req.route_params.get("path", req.url)
+        return login_resp
+
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
 
     ## Generate Speech Services Access Key
     speech_key, speech_region = generate_speech_access_key()
@@ -891,68 +1012,26 @@ def refresh_speechtoken(req: func.HttpRequest) -> func.HttpResponse:
         "region": speech_region,
     }
 
-    return func.HttpResponse(
+    response = func.HttpResponse(
         body=json.dumps(response, indent=4), 
         status_code=200, 
         headers={"Content-Type": "application/json"}
     )
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 @app.route(route="auth-callback", methods=["GET", "POST"])
 def callback(req: func.HttpRequest) -> func.HttpResponse:
     global GLOBAL_HISTORY_PROVIDER
 
     import os
-    import base64
-    import msal
     from data import ReqContext
-
-    app = msal.ClientApplication(
-        app_name=os.environ.get("ENTRA_APP_NAME"), 
-        client_id=os.environ.get("ENTRA_CLIENT_ID"), 
-        client_credential=os.environ.get("ENTRA_CLIENT_SECRET"),
-        authority=os.environ.get("ENTRA_AUTHORITY")
-        )
-
-    ## Build the context for the request
+    from subauth.function_utils import handle_entra_auth_callback
+    
     context = ReqContext(req, history_provider=GLOBAL_HISTORY_PROVIDER)
-
-    result = app.acquire_token_by_authorization_code(
-        context.get_req_val("code"),
-        scopes=context.get_auth_scopes(),
-        redirect_uri=context.get_auth_redirect_url(),
-        )
-
-    if "error" in result:
-        return func.HttpResponse(
-            body="Not Allowed", 
-            status_code=401
-        )
-    
-    id_token = result.get("id_token", None)
-    if id_token is None:
-        return func.HttpResponse(
-            body="Not Allowed",
-            status_code=401
-        )
-
-    send_to_url = context.get_req_val("state", context.get_req_val("session_state", None))
-    if send_to_url is not None: 
-        send_to_url = base64.urlsafe_b64decode((send_to_url+"==").encode("utf-8")).decode("utf-8")
-    
-    if send_to_url is None or send_to_url == '/' or len(send_to_url) == 0: 
-        send_to_url = context.get_config_value('ui-default-redirect-url', os.environ.get("DEFAULT_REDIRECT_URL", "/"))
-    
-
-    is_secure = 'Secure;' if req.url.startswith("https") else ''
-    headers = { 
-        "Set-Cookie": f"token={id_token};{is_secure} Path=/; Max-Age=28800", # HttpOnly; 
-        "Location": send_to_url
-    }
-
-    return func.HttpResponse(
-        status_code=302,
-        headers=headers
-    )
+    return handle_entra_auth_callback(req, context.get_config_value('ui-default-redirect-url', os.environ.get("DEFAULT_REDIRECT_URL", "/")))
 
 
 @app.route(route="app/{*path}", methods=["GET"])
@@ -963,105 +1042,66 @@ def serve_ui(req: func.HttpRequest) -> func.HttpResponse:
     from azure.identity import DefaultAzureCredential
     from data import ReqContext
     from utils.media_types import infer_content_type
+    from subauth.function_utils import validate_function_request
 
-    context = ReqContext(req)
-
+    ## Step 0: Get and adjust the path
     path = req.route_params.get("path", "index.html")
     if path.endswith("/"): path += "index.html"
     path = path.replace("%2F", "/")
 
-    referer = context.get_req_val("Referer", None)
-    subscription_id = context.get_req_val("subscription", None)
-    if referer is None:
-        # Check if there is a default redirect prefix
-        referer_prefix = context.get_config_value('ui-default-redirect-prefix', os.environ.get("DEFAULT_REDIRECT_PREFIX"))
-        if referer_prefix is not None and referer_prefix != "/":
-            ## Remove slash from referer prefix
-            if referer_prefix.endswith("/"): referer_prefix = referer_prefix[:-1]
-            if path.startswith('/'):
-                referer = referer_prefix + path
-            else: 
-                referer = referer_prefix + '/' + path
-    elif subscription_id is None and "subscription=" in referer: 
-        subscription_id = referer.split("subscription=")[1].split("&")[0]
-
-    valid, login_redir = context.validate_request(override_redirect=referer)
-    if not valid:
-        if subscription_id is not None:
-            ## Check the subscription exists in the API Management Service
-            import requests
-            try:
-                who_url = os.environ.get("WHO_AM_I_URL", "https://aichat.mihsydney.com/who-am-i")
-                who_resp = requests.get(f"{who_url}?subscription={subscription_id}")
-                if who_resp.status_code == 200:
-                    who_body = who_resp.json()
-                    who_id = who_body.get("id", None)
-                    context.user_sub = {
-                        "sub-id": who_id, 
-                        "sub-name": who_body.get("name", None)
-                    }
-                    if who_id is not None: 
-                        valid = True
-            except: 
-                pass
-
-    if not valid:
-        ## Grab file extension of the path
-        last_dot = path.rfind(".")
-        if last_dot > -1: 
-            ext = path[last_dot+1:]
-            if ext in ["html", "htm", "js", "cjs", "map", "css", 'svg', 'png', 'jpeg', 'jpg']:
-                valid = True
-
+    
+    ## Step 1: Validate the Request
+    valid, subscription, login_resp = validate_function_request(req, override_path=path, redirect_on_fail=True, default_fail_status=401)
+    if not valid and (path.endswith("robots.txt") or path.endswith("manifest.json")):
+        valid = True
+        
     if not valid: 
-        ## Check if it's an allowed known url
-        if any(path.endswith(suffix) for suffix in ["favicon.ico", "robots.txt", "sitemap.xml", "manifest.json"]):
-            valid = True
+        login_resp.headers["x-path"] = path
+        return login_resp
 
-    if not valid:
-        return login_redir
+    context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
 
-    ## Serve static file from Azure Blob Storage 
+    ## Serve static file from Azure Blob Storage
     blob_service_client = None
 
     ## Setup Storage Connection
     blob_storage_connection = context.get_config_value("ui-storage-connection-string")
     if blob_storage_connection is not None:
         blob_service_client = BlobServiceClient.from_connection_string(blob_storage_connection)
-    else: 
+    else:
         account_url = context.get_config_value("ui-storage-account-url")
         credential = context.get_config_value("ui-storage-account-key")
         if account_url is not None and credential is not None:
             blob_service_client = BlobServiceClient(account_url, credential=credential)
 
-    
+
     ## Check for a Managed Identity Config
     account_name = context.get_config_value("ui-storage-account-name", os.environ.get("UI_STORAGE_ACCOUNT_NAME", None))
     if blob_service_client is None and account_name is not None:
         blob_service_client = BlobServiceClient(account_url=f"https://{account_name}.blob.core.windows.net", credential=DefaultAzureCredential())
-        
+
     # Fallback to default storage account
-    if blob_service_client is None: 
+    if blob_service_client is None:
         blob_storage_connection = os.environ.get("UI_STORAGE_CONNECTION_STRING")
-        if blob_storage_connection is not None: 
+        if blob_storage_connection is not None:
             blob_service_client = BlobServiceClient.from_connection_string(blob_storage_connection)
-        else: 
+        else:
             account_url = os.environ.get("UI_STORAGE_ACCOUNT_URL")
             credential = os.environ.get("UI_STORAGE_ACCOUNT_KEY")
             if account_url is not None and credential is not None:
                 blob_service_client = BlobServiceClient(account_url, credential=credential)
-            else: 
+            else:
                 account_name = os.environ.get("UI_STORAGE_ACCOUNT_NAME", os.environ.get("AZURE_STORAGE_ACCOUNT_NAME", None))
                 if account_name is not None:
                     blob_service_client = BlobServiceClient(account_url=f"https://{account_name}.blob.core.windows.net")
-            
-    if blob_service_client is None: 
+
+    if blob_service_client is None:
         return func.HttpResponse(
-            body="Malformed Configuration", 
+            body="Malformed Configuration",
             status_code=404
         )
 
-    
+
     ## Setup Storage Container
     container_name = context.get_config_value("ui-storage-container-name")
     if container_name is None:
@@ -1069,11 +1109,11 @@ def serve_ui(req: func.HttpRequest) -> func.HttpResponse:
 
     if container_name is None:
         return func.HttpResponse(
-            body="Malformed Configuration - could not determine where to look for the file", 
+            body="Malformed Configuration - could not determine where to look for the file",
             status_code=404
         )
-    
-    
+
+
     ## Load the Client + Download the file
     blob_client = blob_service_client.get_blob_client(container=container_name, blob=path)
 
@@ -1088,21 +1128,21 @@ def serve_ui(req: func.HttpRequest) -> func.HttpResponse:
             break
         except ResourceNotFoundError:
             return func.HttpResponse(
-                body="Not Found", 
+                body="Not Found",
                 status_code=404
             )
         except Exception as e:
             retries -= 1
-    
+
     if blob_data is None:
         return func.HttpResponse(
-            body="Not Found", 
+            body="Not Found",
             status_code=404
         )
 
     ## Infer content type from the file extension
     content_type = infer_content_type(path)
-    
+
     if path.endswith(".js"):
         blob_data = blob_data.decode("utf-8", errors="ignore").encode("utf-8", errors="ignore")
 
@@ -1119,7 +1159,7 @@ def serve_ui(req: func.HttpRequest) -> func.HttpResponse:
         elif type(cache_settings) is dict:
             if path in cache_settings:
                 headers.update({ "Cache-Control": cache_settings[path] })
-            else: 
+            else:
                 import re
                 for key, val in cache_settings.items():
                     ## Key is a regex pattern, so check if it matches the path
@@ -1152,24 +1192,29 @@ def serve_ui(req: func.HttpRequest) -> func.HttpResponse:
                             if path.startswith(key[:-1]):
                                 headers.update({ "Cache-Control": val })
                                 break
-    else: 
-        ## Apply default cache control                        
+    else:
+        ## Apply default cache control
         if 'imgs/' in path or 'images/' in path or 'img/' in path:
             ## Cache Images for 1week
             headers["Cache-Control"] = "public, max-age=604800"
         elif 'lib/' in path or 'scripts/' in path or 'js/' in path:
             ## Cache Libraries for 48 hours
             headers["Cache-Control"] = "public, max-age=172800"
-        else: 
+        else:
             ## No Cache
             headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
 
 
-    return func.HttpResponse(
-        body=blob_data, 
-        status_code=200, 
+    response = func.HttpResponse(
+        body=blob_data,
+        status_code=200,
         headers=headers
     )
+
+    ## Add the headers from the login response
+    if login_resp is not None and login_resp.status_code == 0:
+        response.headers.extend(login_resp.headers)
+    return response
 
 
 

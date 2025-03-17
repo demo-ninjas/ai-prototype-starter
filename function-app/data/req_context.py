@@ -10,6 +10,8 @@ from aiproxy.history import HistoryProvider
 from aiproxy.streaming import StreamWriter, stream_factory
 from aiproxy.functions import FunctionDef
 
+from subauth import Subscription, get_subscription
+
 DEFAULT_CONFIG_NAME = "default"
 GLOBAL_TOKEN_KEYS = None
 
@@ -20,8 +22,7 @@ class _FakeRequest:
     route_params:dict
     body:dict
     method:str
-    user_sub:dict
-    user_jwt:dict
+    sub_id:str
     url:str
 
     def __init__(self, data:dict = None) -> None:
@@ -30,8 +31,7 @@ class _FakeRequest:
             self.route_params = {}
             self.params = {}
             self.body = {}
-            self.user_sub = None
-            self.user_jwt = None
+            self.sub_id = None
             self.method = "POST"
             self.url = ""
         else: 
@@ -40,9 +40,9 @@ class _FakeRequest:
             self.route_params = data.get('route_params', {})
             self.body = data.get('body', {})
             self.method = data.get('method', "POST")
-            self.user_sub = data.get("user_sub", None)
-            self.user_jwt = data.get("user_jwt", None)
+            self.sub_id = data.get("sub_id", None)
             self.url = data.get("url", "")
+
     
     def get_json(self) -> dict:
         return self.body
@@ -52,13 +52,13 @@ class ReqContext(ChatContext):
     req: func.HttpRequest = None
     body:dict = None
     body_bytes:bytes = None
-    user_sub:dict = None
-    user_jwt:dict = None
+    subscription:Subscription = None
     config:ChatConfig
     stream_id:str = None
     
     def __init__(self, req: func.HttpRequest = None, 
                  history_provider:HistoryProvider = None, 
+                 subscription:Subscription = None,
                  function_args_preprocessor:Callable[[dict, FunctionDef, ChatContext], dict] = None
                  ) -> None:
         
@@ -72,7 +72,9 @@ class ReqContext(ChatContext):
         self.__load_chat_config(req)
 
         ## Next, Load the User Information
-        self.__load_user(req)
+        if subscription is None and type(req) == _FakeRequest and req.sub_id is not None:
+            subscription = get_subscription(req.sub_id, False)
+        self.subscription = subscription
         
         ## Then, Load the rest of the settings
         self.__load_stream_id(req)
@@ -100,8 +102,7 @@ class ReqContext(ChatContext):
         data["headers"] = { k:v for k,v in self.req.headers.items() if self.req.headers is not None }
         data["params"] = { k:v for k,v in self.req.params.items() }
         data["route_params"] = { k:v for k,v in self.req.route_params.items() }
-        data["user_sub"] = self.user_sub
-        data["user_jwt"] = self.user_jwt
+        data["sub_id"] = self.subscription.id if self.subscription is not None else None
         data["url"] = self.req.url
         return data
 
@@ -118,26 +119,29 @@ class ReqContext(ChatContext):
 
     @property
     def user_id(self) -> str:
-        if self.user_jwt is not None:
-            return self.user_jwt.get("preferred_username", None)
-        if self.user_sub is not None:
-            return self.user_sub.get("sub-id", None)
+        if self.subscription is None:
+            return None
+        if self.subscription.is_entra_user:
+            return self.subscription.entra_username
+        if self.subscription.id is not None:
+            return self.subscription.id
         return None
-        
+
     @property
     def user_name(self) -> str:
-        if self.user_jwt is not None:
-            return self.user_jwt.get("name", None)
-        if self.user_sub is not None:
-            return self.user_sub.get("sub-name", None)
+        if self.subscription is None:
+            return None
+        if self.subscription.is_entra_user and self.subscription.entra_user_claims is not None:
+            return self.subscription.entra_user_claims.get("name", self.subscription.entra_username)
+        if self.subscription.name is not None:
+            return self.subscription.name
         return None
 
     def clone_for_single_shot(self, with_streamer:bool = False) -> 'ReqContext':
         ctx = ReqContext()
         ctx.req = self.req
         ctx.body = self.body
-        ctx.user_sub = self.user_sub
-        ctx.user_jwt = self.user_jwt
+        ctx.subscription = self.subscription
         ctx.config = self.config
         ctx.stream_writer = self.stream_writer if with_streamer else None
         ctx.metadata = self.metadata.copy() if self.metadata is not None else None
@@ -150,8 +154,7 @@ class ReqContext(ChatContext):
         ctx = ReqContext()
         ctx.req = self.req
         ctx.body = self.body
-        ctx.user_sub = self.user_sub
-        ctx.user_jwt = self.user_jwt
+        ctx.subscription = self.subscription
         ctx.config = self.config
         ctx.stream_writer = self.stream_writer if with_streamer else None
         ctx.metadata = self.metadata.copy() if self.metadata is not None else None
@@ -250,19 +253,6 @@ class ReqContext(ChatContext):
             self.body = None
             self.noddy_bytes = None
 
-    def __load_user(self, req: func.HttpRequest):
-        """
-        Loads the user information from the request headers
-        """
-        if type(req) == _FakeRequest:
-            self.user_sub = req.user_sub
-            self.user_jwt = req.user_jwt
-        else: 
-            self.user_sub = {
-                "sub-id": req.headers.get('sub-id', "not-set") if req.headers is not None else "not-set",
-                "sub-name": req.headers.get('sub-name', "not-set") if req.headers is not None else "not-set"
-            }
-
     def __load_chat_context(self, req: func.HttpRequest):
         """
         Loads the context for this request from the request headers, body, or query parameters
@@ -346,159 +336,3 @@ class ReqContext(ChatContext):
         message.add_metadata("_user_id", self.user_id)
         message.add_metadata("_user_name", self.user_name)
         super().add_message_to_history(message)
-
-    def __validate_token(id_token:str) -> tuple[bool, dict]:
-        global GLOBAL_TOKEN_KEYS
-        import os
-        from jose import jwt
-
-        if GLOBAL_TOKEN_KEYS is None:
-            import requests
-
-            ## Go and retrieve the JWKS Keys
-            try:    
-                resp = requests.get(os.environ.get("ENTRA_AUTHORITY") + "/discovery/v2.0/keys")
-                jwks = resp.json()
-                keys = jwks.get("keys", [])
-                key_map = {}
-                for key in keys:
-                    key_map[key["kid"]] = key
-                GLOBAL_TOKEN_KEYS = key_map
-            except Exception:
-                raise RuntimeError("Unable to load the Keys for validating the auth token")
-        
-        if GLOBAL_TOKEN_KEYS is None:
-            raise RuntimeError("Unable to retrieve the Keys to validate the auth token")
-
-        unverified_header = jwt.get_unverified_header(id_token)
-        rsa_key = GLOBAL_TOKEN_KEYS.get(unverified_header["kid"], None)
-        if rsa_key is None:
-            return False, None
-        
-        try:
-            payload = jwt.decode(
-                id_token,
-                rsa_key,
-                algorithms=["RS256"],
-                audience=os.environ.get("ENTRA_CLIENT_ID"),
-                issuer=os.environ.get("ENTRA_AUTHORITY") + "/v2.0"
-            )
-            return True, payload
-        except jwt.ExpiredSignatureError:
-            return False, None ## Token has expired
-        except jwt.JWTClaimsError:
-            return False, None ## Invalid Claims
-        except Exception:
-            return False, None ## Invalid Token
-        
-    def validate_request(self, override_redirect:str = None, allow_entra_user:bool = True, allow_subscription_user:bool = True, default_fail_status:int = 302) -> tuple[bool, func.HttpResponse]:
-        import base64
-        import os
-        import msal
-        import logging
-        
-        ## If Subscription users are allowed, then check the subscription details
-        if allow_subscription_user and self.user_sub:
-            if os.environ.get('LOCAL_DEBUG_ALLOW_NO_SUBSCRIPTION', 'false') == 'true':
-                return True, None
-
-            user_id = str(self.user_sub.get("sub-id", "not-set")).lower()
-            user_name = str(self.user_sub.get("sub-name", "not-set")).lower()
-            if user_id is not None and user_name is not None and "not-set" not in [user_id, user_name] and len(user_id) > 0 and len(user_name) > 0:
-                return True, None
-
-        ## If Entra users are allowed, then check the token cookie (or authorization header)
-        auth_url = None
-        if allow_entra_user:
-            id_token = None
-
-            # Grab token from Cookie
-            if id_token is None or len(id_token) == 0: 
-                cookiestr = self.get_req_val("Cookie", "")
-                # logging.info("Req Headers: " + json.dumps(self.req.headers or {}, indent=2))
-                cookies = cookiestr.split(";")
-                for cookie in cookies:
-                    if "=" not in cookie: continue
-                    key, value = cookie.split("=")
-                    if key.strip() == "token":
-                        id_token = value
-                        break
-            
-            # Grab token from Authorization header
-            if id_token is None:
-                id_token = self.get_req_val("Authorization", None)
-                if id_token is not None and len(id_token) < 20:
-                    id_token = None ## It's not going to be a valid token, don't even try to parse it
-                
-            # If there is a token, check that it's valid
-            if id_token is not None: 
-                if id_token.startswith("BEARER "):
-                    id_token = id_token.replace("BEARER ", "")
-                try:
-                    is_valid, payload = ReqContext.__validate_token(id_token)
-                    if is_valid:
-                        self.user_jwt = payload
-                        return True, None
-                except Exception as e: 
-                    logging.info("Failed to validate token - will force a re-auth with error: " + str(e))
-                    pass # Token is likely to be invalid - let's force a re-authentication
-
-
-            ## If we got here, then the request is not authorised (either no auth token, or it's expired)
-            ## So generate the login redirect URL...
-            app = msal.ClientApplication(
-                app_name=self.get_config_value("auth-app-name", os.environ.get("ENTRA_APP_NAME")), 
-                client_id=self.get_config_value("auth-client-id", os.environ.get("ENTRA_CLIENT_ID")),
-                client_credential=self.get_config_value("auth-client-secret", os.environ.get("ENTRA_CLIENT_SECRET")),
-                authority=self.get_config_value("auth-authority", os.environ.get("ENTRA_AUTHORITY"))
-                )
-
-
-            ## Get the path portion of the req.url
-            colon_idx = self.req.url.find(":")
-            if colon_idx == -1: colon_idx = -3
-
-            url = None
-            if override_redirect is not None and len(override_redirect) > 0:
-                logging.info("Setting Override Redirect to: " + override_redirect)
-                url = override_redirect
-            else:
-                url = self.req.url[self.req.url.find('/', colon_idx + 3):]
-                if self.get_config_value("auth-state-strip-api-app-path", os.environ.get("ENTRA_STATE_STRIP_API_APP_PATH", "true")).lower() == "true": 
-                    if url.startswith("/api/app/"): url = url[8:]
-                path_prefix = self.get_config_value("auth-state-redirect-path-prefix", os.environ.get("ENTRA_STATE_REDIRECT_PATH_PREFIX", None))
-                if path_prefix is not None: 
-                    if not path_prefix.endswith("/"): path_prefix += "/"
-                    if url.startswith("/"): url = url[1:]
-                    if url.startswith("api/"): url = url[4:] ## Remove the api/ prefix if it's there
-                    url = path_prefix + url
-
-            state = base64.urlsafe_b64encode(url.encode()).decode()
-            # logging.info("Validate Redirect Uri: " + str(self.get_auth_redirect_url()))
-            # logging.info("Validate Scopes: " + str(self.get_auth_scopes()))
-            auth_url = app.get_authorization_request_url(
-                scopes=self.get_auth_scopes(), 
-                redirect_uri=self.get_auth_redirect_url(),
-                state=state
-                )
-
-
-        ## Return the unauth response (redirect or requested fail status)
-        status_code = int(self.get_req_val("redirectStatus", default_fail_status))
-        resp = func.HttpResponse(
-            status_code=status_code,
-            headers={"Location": auth_url}
-        ) if auth_url is not None else func.HttpResponse(status_code=status_code)
-        return False, resp
-
-    def get_auth_scopes(self) -> list[str]:
-        return self.get_config_value('auth-scopes', os.environ.get("ENTRA_SCOPES", "User.Read")).split(",")
-    
-    def get_auth_redirect_url(self) -> str:
-        redirect_url = self.get_config_value("auth-redirect-uri", os.environ.get("ENTRA_REDIRECT_URI"))
-        if '$host' in redirect_url: 
-            import logging
-            host =  self.get_req_val("x-host", self.get_req_val('disguised-host', "not-set"))
-            redirect_url = redirect_url.replace("$host", host)
-            logging.info("Redirect URL: " + redirect_url)
-        return redirect_url
