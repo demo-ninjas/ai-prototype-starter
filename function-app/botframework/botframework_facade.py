@@ -7,7 +7,7 @@ from aiproxy.utils.date import now_millis
 
 DEFAULT_WELCOME_MESSAGE = """Hello!
 
-I'm {bot_name}, and I'm here to help you manage the operations on your route.
+I'm {bot_name}, and I'm here to help you 😊
 
 When you're ready, let's start chatting.
 """

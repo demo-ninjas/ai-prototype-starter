@@ -29,10 +29,15 @@ export class ApiClient {
         let subscriptionKey = this.queryParams.get('subscription');
         if (!subscriptionKey) {
             subscriptionKey = localStorage.getItem('subscription');
+        } else {
+            // Remove the subscription key from the URL
+            localStorage.setItem('subscription', subscriptionKey);
+            this.queryParams.delete('subscription');
+            window.history.pushState(null, "", "?" + this.queryParams.toString());
         }
+
         if (subscriptionKey) {
             this.headers["subscription"] = subscriptionKey;
-            localStorage.setItem('subscription', subscriptionKey);
         }
         
         // Add Thread if it exists

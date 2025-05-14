@@ -7,6 +7,7 @@ import chatStyleOptions from './chat-style-options';
 import './chat-window.css';
 
 import { CLEAR_STEPS, CLEAR_PROGRESS, STEP_MESSAGE, PROGRESS_MESSAGE,  METADATA_LEVEL_CHANGED, SENTIMENT_UPDATE } from '../data/events';
+import { text } from 'stream/consumers';
 
 const messageDelta = new MessageDelta();
 
@@ -567,6 +568,66 @@ function ChatWindow({apiClient}: {apiClient:ApiClient}) {
             output.push(<div key={"metadata-"+key}>
               <b>Responder:</b>{metadata[key]}
             </div>)
+          } else if (key == "interim_responses") {
+            output.push(
+              <div key={"metadata-" + key}>
+              <button
+                onClick={() => {
+                const dialog = document.createElement('div');
+                dialog.style.position = 'fixed';
+                dialog.style.top = '50%';
+                dialog.style.left = '50%';
+                dialog.style.transform = 'translate(-50%, -50%)';
+                dialog.style.width = '80%';
+                dialog.style.height = '60%';
+                dialog.style.overflowY = 'scroll';
+                dialog.style.backgroundColor = 'white';
+                dialog.style.border = '1px solid #ccc';
+                dialog.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
+                dialog.style.padding = '20px';
+                dialog.style.zIndex = '1000';
+
+                const closeButton = document.createElement('button');
+                closeButton.textContent = 'Close';
+                closeButton.style.position = 'absolute';
+                closeButton.style.top = '10px';
+                closeButton.style.right = '10px';
+                closeButton.onclick = () => document.body.removeChild(dialog);
+
+                const content = document.createElement('div');
+                metadata[key].forEach((interim: any) => {
+                  const interimDiv = document.createElement('div');
+                  interimDiv.style.marginBottom = '10px';
+                  let txtContent = interim.replace(/\\n/g, '\n');
+                  let txtTitle = "Agent";
+                  if (txtContent.startsWith("[")) {
+                    // Take the first line as the title, and the rest as the content
+                    txtTitle = txtContent.substring(1, txtContent.indexOf("\n")-1).trim();
+                    txtContent = txtContent.substring(txtContent.indexOf("\n")+1).trim();
+                  }
+                  interimDiv.innerHTML = `<b>${txtTitle}:</b><br/>`;
+                  interimDiv.innerHTML += txtContent;
+                  interimDiv.style.border = '1px solid #ccc';
+                  interimDiv.style.padding = '10px';
+                  interimDiv.style.backgroundColor = '#c5c5c5';
+                  interimDiv.style.borderRadius = '5px';
+                  interimDiv.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                  interimDiv.style.maxWidth = '100%';
+                  interimDiv.style.whiteSpace = 'pre-wrap';
+                  interimDiv.style.overflowWrap = 'break-word';
+                  interimDiv.style.fontFamily = 'monospace';
+                  content.appendChild(interimDiv);
+                });
+
+                dialog.appendChild(closeButton);
+                dialog.appendChild(content);
+                document.body.appendChild(dialog);
+                }}
+              >
+                Group Chat Messages
+              </button>
+              </div>
+            );
           } else {
             output.push(<div key={"metadata-"+key}><b>{key}</b>{JSON.stringify(metadata[key])}</div>);
           }

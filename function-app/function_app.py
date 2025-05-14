@@ -10,6 +10,7 @@ logging.getLogger("azure").setLevel(logging.ERROR) ## Only log the ERRORs from t
 
 GLOBAL_HISTORY_PROVIDER = None
 PUBLIC_ORCHESTRATOR_LIST = []
+APP_SETUP = False
 
 def build_public_orchestrator_list():
     global PUBLIC_ORCHESTRATOR_LIST
@@ -18,6 +19,10 @@ def build_public_orchestrator_list():
     from aiproxy.utils.config import load_public_orchestrator_list
     orchestrators = load_public_orchestrator_list()
     
+    ## Remove any orchestrators that have an agent type of graph-agent or a pattern of GraphRAG
+    ## (these are not supported by this function app)
+    orchestrators = [o for o in orchestrators if o.get('agent-type', None) != 'graph-agent' and o.get('pattern', None) != 'GraphRAG']
+
     ## Add any additional orchestrators here that are not in the public list but you want to be available
     # orchestrators.insert(0, {
     #     "name": "Some Orchestrator Name",
@@ -30,9 +35,10 @@ def build_public_orchestrator_list():
     PUBLIC_ORCHESTRATOR_LIST = orchestrators
     return orchestrators
 
+
 def setup_app():
     global GLOBAL_HISTORY_PROVIDER
-
+    
     ## Register App Functions
     from aiproxy.functions import register_all_base_functions
     register_all_base_functions()
@@ -48,15 +54,21 @@ def setup_app():
     ## Load the Publish Orchestrator List
     build_public_orchestrator_list()
 
-    print('App setup and ready to go!')
+    logging.warning('App setup and ready to go!')
 
-setup_app()
 
+def ensure_app_setup():
+    global APP_SETUP
+    if not APP_SETUP:
+        setup_app()
+        APP_SETUP = True
 
 
 @app.function_name(name="refresh_config_cache")
 @app.timer_trigger(schedule="0,20,40 * * * * *", arg_name="tm", run_on_startup=False) 
 def refresh_config_cache(tm: func.TimerRequest) -> None:
+    ensure_app_setup()
+
     ## Refresh the configs in the config cache (every 20s)
     from aiproxy.utils.config import CACHED_CONFIGS, load_named_config
     try: 
@@ -80,6 +92,7 @@ def refresh_config_cache(tm: func.TimerRequest) -> None:
 
 @app.route(route="chat", methods=["POST", "GET"])
 def chat(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     global GLOBAL_HISTORY_PROVIDER
 
     import json
@@ -160,6 +173,7 @@ def chat(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="completion", methods=["POST", "GET"])
 def chat_completion(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     global GLOBAL_HISTORY_PROVIDER
 
     import json
@@ -208,6 +222,7 @@ def chat_completion(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="refresh-caches", methods=["POST", "GET"])
 def refresh_caches(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     from aiproxy.utils.config import CACHED_CONFIGS
     from aiproxy import GLOBAL_PROXIES_REGISTRY
     from data import ReqContext
@@ -247,6 +262,7 @@ def refresh_caches(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="list-orchestrators", methods=["POST", "GET"])
 def orchestrator_list(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     global PUBLIC_ORCHESTRATOR_LIST
     global GLOBAL_HISTORY_PROVIDER
     import json
@@ -284,6 +300,7 @@ def orchestrator_list(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="who-am-i", methods=["POST", "GET"])
 def who_am_i(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     import json
     from data import ReqContext
     from subauth.function_utils import validate_function_request
@@ -314,6 +331,7 @@ def who_am_i(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="a-list-configs", methods=["POST", "GET"])
 def admin_config_list(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     import json
     from aiproxy.utils.config import load_configs
     from data import ReqContext
@@ -352,6 +370,7 @@ def admin_config_list(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="a-get-config", methods=["POST", "GET"])
 def admin_get_config(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     import json
     from aiproxy.utils.config import get_config_record
     from data import ReqContext
@@ -400,6 +419,7 @@ def admin_get_config(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="a-update-config", methods=["POST"])
 def admin_update_config(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     import json
     from aiproxy.utils.config import update_config
     from data import ReqContext
@@ -449,6 +469,7 @@ def admin_update_config(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="assistant", methods=["POST", "GET"])
 def chat_with_assistant(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     global GLOBAL_HISTORY_PROVIDER
 
     import json
@@ -530,6 +551,7 @@ def chat_with_assistant(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="webchat/conversations", methods=["GET", "POST"])
 def bf_start_conversation(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     global GLOBAL_HISTORY_PROVIDER
     import json
     from data import ReqContext
@@ -569,6 +591,7 @@ def bf_start_conversation(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="webchat/conversations/{conversation_id}/activities", methods=["POST"])
 @app.durable_client_input(client_name="client")
 async def bf_conversation_activity(req: func.HttpRequest, client) -> func.HttpResponse:
+    ensure_app_setup()
     global GLOBAL_HISTORY_PROVIDER
 
     from data import ReqContext
@@ -712,6 +735,7 @@ def bf_send_sentiment(context):
 
 @app.route(route="webchat/conversations/{conversation_id}", methods=["GET", "POST"])
 def bf_conversation(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     global GLOBAL_HISTORY_PROVIDER
 
     import json
@@ -751,6 +775,7 @@ def bf_conversation(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="webchat/conversations/{conversation_id}/messages", methods=["GET", "POST"])
 def bf_conversation_messages(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     raise NotImplementedError("This method is not yet implemented")
 
 
@@ -763,6 +788,7 @@ def bf_conversation_messages(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="create-stream", methods=["POST", "GET"])
 def create_stream(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     import json
     from uuid import uuid4
     from data import ReqContext
@@ -800,6 +826,7 @@ def create_stream(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="push-stream", methods=["POST", "GET"])
 def push_stream(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     from data import ReqContext
     from azure.messaging.webpubsubservice import WebPubSubServiceClient
     import logging
@@ -862,6 +889,7 @@ def push_stream(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="ip-notify", methods=["POST", "GET"])
 def ip_notify(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     from data import ReqContext
     from azure.messaging.webpubsubservice import WebPubSubServiceClient
     import logging
@@ -923,6 +951,7 @@ def ip_notify(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="connect", methods=["GET", "POST"])
 def connect(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     global GLOBAL_HISTORY_PROVIDER
     global PUBLIC_ORCHESTRATOR_LIST
 
@@ -989,6 +1018,7 @@ def connect(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="speechtoken", methods=["GET", "POST"])
 def refresh_speechtoken(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     global GLOBAL_HISTORY_PROVIDER
 
     import json
@@ -1024,6 +1054,7 @@ def refresh_speechtoken(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="auth-callback", methods=["GET", "POST"])
 def callback(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     global GLOBAL_HISTORY_PROVIDER
 
     import os
@@ -1036,10 +1067,8 @@ def callback(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="app/{*path}", methods=["GET"])
 def serve_ui(req: func.HttpRequest) -> func.HttpResponse:
+    ensure_app_setup()
     import os
-    from azure.storage.blob import BlobServiceClient
-    from azure.core.exceptions import ResourceNotFoundError
-    from azure.identity import DefaultAzureCredential
     from data import ReqContext
     from utils.media_types import infer_content_type
     from subauth.function_utils import validate_function_request
@@ -1061,78 +1090,29 @@ def serve_ui(req: func.HttpRequest) -> func.HttpResponse:
 
     context = ReqContext(req, subscription=subscription, history_provider=GLOBAL_HISTORY_PROVIDER)
 
-    ## Serve static file from Azure Blob Storage
-    blob_service_client = None
-
-    ## Setup Storage Connection
-    blob_storage_connection = context.get_config_value("ui-storage-connection-string")
-    if blob_storage_connection is not None:
-        blob_service_client = BlobServiceClient.from_connection_string(blob_storage_connection)
-    else:
-        account_url = context.get_config_value("ui-storage-account-url")
-        credential = context.get_config_value("ui-storage-account-key")
-        if account_url is not None and credential is not None:
-            blob_service_client = BlobServiceClient(account_url, credential=credential)
-
-
-    ## Check for a Managed Identity Config
-    account_name = context.get_config_value("ui-storage-account-name", os.environ.get("UI_STORAGE_ACCOUNT_NAME", None))
-    if blob_service_client is None and account_name is not None:
-        blob_service_client = BlobServiceClient(account_url=f"https://{account_name}.blob.core.windows.net", credential=DefaultAzureCredential())
-
-    # Fallback to default storage account
-    if blob_service_client is None:
-        blob_storage_connection = os.environ.get("UI_STORAGE_CONNECTION_STRING")
-        if blob_storage_connection is not None:
-            blob_service_client = BlobServiceClient.from_connection_string(blob_storage_connection)
-        else:
-            account_url = os.environ.get("UI_STORAGE_ACCOUNT_URL")
-            credential = os.environ.get("UI_STORAGE_ACCOUNT_KEY")
-            if account_url is not None and credential is not None:
-                blob_service_client = BlobServiceClient(account_url, credential=credential)
-            else:
-                account_name = os.environ.get("UI_STORAGE_ACCOUNT_NAME", os.environ.get("AZURE_STORAGE_ACCOUNT_NAME", None))
-                if account_name is not None:
-                    blob_service_client = BlobServiceClient(account_url=f"https://{account_name}.blob.core.windows.net")
-
-    if blob_service_client is None:
-        return func.HttpResponse(
-            body="Malformed Configuration",
-            status_code=404
-        )
-
-
-    ## Setup Storage Container
-    container_name = context.get_config_value("ui-storage-container-name")
-    if container_name is None:
-        container_name = os.environ.get("UI_STORAGE_CONTAINER_NAME")
-
-    if container_name is None:
-        return func.HttpResponse(
-            body="Malformed Configuration - could not determine where to look for the file",
-            status_code=404
-        )
-
-
-    ## Load the Client + Download the file
-    blob_client = blob_service_client.get_blob_client(container=container_name, blob=path)
-
     blob_data = None
-    retries = 3
-    while retries > 0:
-        try:
-            # encoding param is necessary for readall() to return str, otherwise it returns bytes
-            downloader = blob_client.download_blob(max_concurrency=1, encoding=None)
-            blob_data = downloader.readall()
-            retries = 0
-            break
-        except ResourceNotFoundError:
-            return func.HttpResponse(
-                body="Not Found",
-                status_code=404
-            )
-        except Exception as e:
-            retries -= 1
+
+    try: 
+        ## Check if we're serving from Blob storage or from the local file system
+        ui_local_path = context.get_config_value("ui-local-path", os.environ.get("UI_LOCAL_PATH", None))
+        if ui_local_path is not None:
+            from utils.fs import load_file
+            file_path = os.path.join(ui_local_path, path)
+            blob_data = load_file(file_path, ui_local_path)
+        else: 
+            from utils.blob import get_blob_data
+            blob_data = get_blob_data(path, context)
+    except FileNotFoundError as e:
+        return func.HttpResponse(
+            body="Not Found",
+            status_code=404
+        )
+    except ValueError as e:
+        return func.HttpResponse(
+            body="Configuration Error",
+            status_code=500
+        )
+
 
     if blob_data is None:
         return func.HttpResponse(
