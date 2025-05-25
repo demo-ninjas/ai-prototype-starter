@@ -3,6 +3,12 @@ data-sources/
 .local-*
 indexes/
 
+## Ignore the Files with internal env vars and parameters
+.infrastructure/env-vars.json
+.infrastructure/parameters.json
+.infrastructure/set-network-rules.sh
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
