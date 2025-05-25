@@ -156,9 +156,17 @@ def chat(req: func.HttpRequest) -> func.HttpResponse:
     context.init_history()  ## Ensure that the history for this conversation has been loaded
     resp = proxy.send_message(prompt, context, override_system_prompt=override_system_prompt, use_functions=use_functions, timeout_secs=timeout_secs)
 
+    api_resp = resp.to_api_response()
+    if not resp.error:
+        ## Send a "complete" message to the stream
+        context.push_stream_update({
+            "id": resp.id, 
+            "data": api_resp
+        }, "complete")
+
     response = func.HttpResponse(
         body=json.dumps({
-            "response": resp.to_api_response(), 
+            "response": api_resp,
             "context": context.build_context()
         }, indent=4),
         status_code=200, 
@@ -636,8 +644,12 @@ async def bf_conversation_activity(req: func.HttpRequest, client) -> func.HttpRe
 
 @app.orchestration_trigger(context_name="context")
 def bf_conversation_orchestrator(context:df.DurableOrchestrationContext):
+    ensure_app_setup()
+
+    logging.warning(f"bf_conversation_orchestrator: {context.get_input().thread_id}")
     prompt_outcome = yield context.call_activity("bf_send_prompt", context.get_input())
     if not prompt_outcome:
+        logging.warning(f"bf_conversation_orchestrator:No prompt outcome")
         return
     
     # channelData = context.get_input().get_req_val("channelData", {})
@@ -646,6 +658,7 @@ def bf_conversation_orchestrator(context:df.DurableOrchestrationContext):
     # if from_speech: 
     #    post_prompt_tasks.append(context.call_activity("send_speech_response", context.get_input()))
     
+    logging.warning(f"bf_conversation_orchestrator:Prompt outcome: {prompt_outcome} [Thread ID: {context.get_input().thread_id}]")
     post_activities = []
     if context.get_input().get_config_value("send-suggestions", True):
         post_activities.append(context.call_activity("bf_send_suggestions", context.get_input()))
@@ -662,10 +675,14 @@ def bf_conversation_orchestrator(context:df.DurableOrchestrationContext):
 
 @app.activity_trigger(input_name="context")
 def bf_send_prompt(context):
+    ensure_app_setup()
+
     global GLOBAL_HISTORY_PROVIDER
 
     from botframework import BotframeworkFacade
 
+
+    logging.warning(f"bf_send_prompt: {context.thread_id}")
     # The Thead ID is required - without it we are not participating in a conversation
     #  so raise if it's not provided
     if context.thread_id is None:
@@ -689,9 +706,13 @@ def bf_send_prompt(context):
 
 @app.activity_trigger(input_name="context")
 def bf_send_suggestions(context):
+    ensure_app_setup()
+
     global GLOBAL_HISTORY_PROVIDER
 
     from botframework import BotframeworkFacade
+
+    logging.warning(f"bf_send_suggestions: {context.thread_id}")
 
     # The Thead ID is required - without it we are not participating in a conversation
     #  so raise if it's not provided
@@ -712,9 +733,13 @@ def bf_send_suggestions(context):
 
 @app.activity_trigger(input_name="context")
 def bf_send_sentiment(context):
+    ensure_app_setup()
+    
     global GLOBAL_HISTORY_PROVIDER
 
     from botframework import BotframeworkFacade
+
+    logging.warning(f"bf_send_sentiment: {context.thread_id}")
 
     # The Thead ID is required - without it we are not participating in a conversation
     #  so raise if it's not provided

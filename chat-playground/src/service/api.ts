@@ -44,6 +44,7 @@ export class ApiClient {
         let thread = this.queryParams.get('thread');
         if (thread) {
             this.thread = thread;
+            this.headers['thread'] = thread;
         }
 
         this.debug = this.queryParams.get('debug') === 'true';
@@ -157,6 +158,7 @@ export class ApiClient {
             const { thread, stream, speechKey, speechRegion, username, name, orchestrators } = await response.json();
             // TODO: Pull out any other data needed from the connect response
             this.thread = thread;
+            this.headers['thread'] = thread;
             this.stream = stream;
             this.orchestrators = orchestrators;
             this.username = username;

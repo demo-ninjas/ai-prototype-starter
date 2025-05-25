@@ -17,7 +17,7 @@
   },
   "extensions": {
     "durableTask": {
-      "hubName": "MyTaskHub",
+      "hubName": "AIChatHub",
       "storageProvider": {
         "connectionStringName": "AzureWebJobsStorage"
       }

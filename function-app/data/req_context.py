@@ -316,7 +316,7 @@ class ReqContext(ChatContext):
             stream_type = "pubsub"
 
         if stream_type is None: return None
-        return stream_factory(stream_type, stream_id=self.bot_conversation_id or self.stream_id or self.thread_id, config_name=self.get_config_value("stream-config", None))
+        return stream_factory(stream_type, stream_id=self.bot_conversation_id or self.stream_id or self.thread_id, stream_config=self.get_config_value("stream-config", None))
 
     def get_metadata(self, key: str, default: any = None) -> any:
         val = self.get_req_val(key, None)
